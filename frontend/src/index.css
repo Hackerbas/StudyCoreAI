@@ -3,23 +3,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-base: #060b18;
-  --bg-card: rgba(255,255,255,0.04);
-  --bg-card-hover: rgba(255,255,255,0.07);
-  --border: rgba(255,255,255,0.08);
-  --border-bright: rgba(99,102,241,0.4);
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #475569;
-  --accent: #6366f1;
-  --accent-light: #818cf8;
-  --accent-dark: #4f46e5;
-  --success: #22c55e;
+  --bg-base: #111318;
+  --bg-card: #1e293b;
+  --bg-card-hover: #334155;
+  --border: #334155;
+  --border-bright: #475569;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-light: #60a5fa;
+  --accent-dark: #2563eb;
+  --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
-  --radius: 12px;
-  --radius-lg: 18px;
-  --shadow-glow: 0 0 40px rgba(99,102,241,0.12);
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-glow: none;
 }
 
 html { scroll-behavior: smooth; }
@@ -83,37 +83,29 @@ body {
 
 /* Gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #60a5fa 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 4s linear infinite;
+  background: none;
+  -webkit-text-fill-color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 /* Gradient button */
 .btn-gradient {
-  background: linear-gradient(135deg, var(--accent-dark), var(--accent), #818cf8);
-  background-size: 200% auto;
+  background: #334155;
   border: none;
-  color: white;
-  font-weight: 600;
+  color: #f8fafc;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   border-radius: var(--radius);
 }
 .btn-gradient:hover {
-  background-position: right center;
-  transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(99,102,241,0.4);
+  background: #475569;
 }
 .btn-gradient:active { transform: translateY(0); }
 .btn-gradient:disabled {
-  background: rgba(255,255,255,0.06);
+  background: transparent;
   color: var(--text-muted);
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 /* Input */

@@ -394,6 +394,7 @@ def chat():
 
     data = request.json
     query = data.get('query')
+    mode = data.get('mode', 'normal')
     book_id = data.get('book_id')  # optional – for per-page search
 
     if not query:
@@ -486,23 +487,35 @@ def chat():
                             context += f"--- Beginning of {book['filename']} ---\n{text_snippet}\n...\n\n"
                         if len(context) > 15000: break
 
+        # Construct Insane System Prompt Based on Mode
+        if mode == 'simple':
+            system_instruction = """You are StudyCore AI, an exceptionally patient and encouraging tutor for a complete beginner.
+Your goal is to break down complex topics using everyday, relatable analogies. Use extremely simple, accessible language. Do not use academic jargon unless you immediately define it in basic terms.
+Keep your sentences relatively short and your tone warm and supportive."""
+        elif mode == 'advanced':
+            system_instruction = """You are StudyCore AI, an expert academic scholar and rigorous university-level tutor.
+Your goal is to provide comprehensive, deeply analytical explanations. You must synthesize concepts from the provided text, discuss underlying principles, and present arguments logically.
+Use precise technical terminology. Your tone must be formal, scholarly, and highly detailed."""
+        else:
+            system_instruction = """You are StudyCore AI, a clear, balanced, and highly effective study assistant.
+Your goal is to provide well-structured, easy-to-follow explanations that help the student grasp the key takeaways. Break down complex ideas into manageable points.
+Maintain a friendly and supportive educational tone."""
+
         chat_completion = groq_chat_with_rotation(
-            temperature=0.4,  # More conversational and flexible
+            temperature=0.4,
             messages=[
             {
                 "role": "system",
-                "content": f"""You are StudyCore AI, a helpful, patient, and easy-to-understand tutor for a student.
+                "content": f"""{system_instruction}
 
-Context from student's library:
+📚 Context from student's library:
 {context}
 
-Instructions:
-1.  **Context-Based & Intuitive:** Answer the student's question using the information above. If their question is brief, politely deduce what they mean instead of demanding highly detailed prompts.
-2.  **Simple & Clear Responses:** The student should get a clear, easy-to-understand, simple answer right away without having to ask multiple times. Avoid overly dense language unless asked for an advanced explanation.
-3.  **Use Rich Markdown Formatting:** You MUST use Markdown formatting in your responses. Use **bold** for key terms, `code blocks` if relevant, and headings (##) or lists (-, 1.) to break down your answers so they are beautifully organized and readable.
-4.  **Provide Examples:** Make concepts concrete by citing examples from the text.
-5.  **Unknowns:** If the topic is entirely absent from the library, say "I cannot find the answer to that in your uploaded library." Do not guess or use outside knowledge.
-6.  **Tone:** Friendly, accessible, well-structured, and highly readable."""
+⚠️ CRITICAL RULES:
+1. Context-Based & Intuitive: Answer the student's question ONLY using the context above. If their question is brief, politely deduce what they mean.
+2. Formatted for Readability: You MUST use Markdown formatting in your responses. Use **bold** for key terms, `code blocks` if relevant, and headings (##) or lists (-, 1.) to break down your answers so they are beautifully organized.
+3. Provide Concrete Examples: Make concepts real by citing examples directly from the text if available.
+4. Unknowns: If the topic is entirely absent from the library, state clearly that it is not covered in their documents. Do not hallucinate outside information."""
             },
             {
                 "role": "user",

@@ -6,9 +6,9 @@ import { trackEvent } from './StatsView';
 const STORAGE_KEY = 'studycore_chat_history';
 
 const AI_MODES = [
-    { id: 'normal', icon: Lightbulb, name: 'Core Tutor', desc: 'Balanced, clear explanations', prefix: '' },
-    { id: 'simple', icon: Baby, name: 'Beginner', desc: 'Simple words and analogies', prefix: 'Explain in very simple terms, as if I am a beginner: ' },
-    { id: 'advanced', icon: GraduationCap, name: 'Scholar', desc: 'Detailed academic analysis', prefix: 'Give a detailed, technical explanation of the following: ' },
+    { id: 'normal', icon: Lightbulb, name: 'Core Tutor', desc: 'Balanced, clear explanations' },
+    { id: 'simple', icon: Baby, name: 'Beginner', desc: 'Simple words and analogies' },
+    { id: 'advanced', icon: GraduationCap, name: 'Scholar', desc: 'Detailed academic analysis' },
 ];
 
 const CHIPS = [
@@ -33,15 +33,17 @@ const StudentDashboard = () => {
     useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-60))); }, [messages]);
 
     const sendMessage = async (q) => {
-        const modeDef = AI_MODES.find(l => l.id === level);
-        const query = modeDef.prefix + (q || input).trim();
-        if (!query.trim() || loading) return;
-        const display = (q || input).trim();
-        setMessages(p => [...p, { role: 'user', content: display }]);
+        const query = (q || input).trim();
+        if (!query || loading) return;
+        setMessages(p => [...p, { role: 'user', content: query }]);
         setInput(''); setLoading(true);
         trackEvent('question_asked');
         try {
-            const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+            const res = await fetch('/api/chat', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ query, mode: level }) 
+            });
             const data = await res.json();
             setMessages(p => [...p, { role: 'assistant', content: res.ok ? data.response : 'Error: ' + data.error }]);
         } catch { setMessages(p => [...p, { role: 'assistant', content: 'Network error.' }]); }
@@ -54,27 +56,22 @@ const StudentDashboard = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
-            {/* Ambient glows */}
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
-                <div style={{ position: 'absolute', top: -100, right: -100, width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.05) 0%,transparent 70%)' }} />
-                <div style={{ position: 'absolute', bottom: -60, left: -60, width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle,rgba(139,92,246,0.04) 0%,transparent 70%)' }} />
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0f19' }}>
 
             {/* Messages */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
                 <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', paddingInline: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {messages.map((msg, idx) => (
                         <div key={idx} className="animate-fade-up" style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                            <div style={{ display: 'flex', gap: 10, maxWidth: '80%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-end' }}>
-                                <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.role === 'user' ? 'linear-gradient(135deg,#4f46e5,#7c3aed)' : 'linear-gradient(135deg,#0f172a,#1e293b)', border: msg.role === 'assistant' ? '1px solid rgba(99,102,241,0.25)' : 'none', boxShadow: msg.role === 'user' ? '0 4px 12px rgba(99,102,241,0.28)' : 'none' }}>
-                                    {msg.role === 'user' ? <User size={12} color="white" /> : <Bot size={12} color="#818cf8" />}
+                            <div style={{ display: 'flex', gap: 12, maxWidth: '85%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                                <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.role === 'user' ? '#334155' : 'transparent', border: msg.role === 'assistant' ? '1px solid rgba(255,255,255,0.1)' : 'none', marginTop: 4 }}>
+                                    {msg.role === 'user' ? <User size={14} color="#f8fafc" /> : <Bot size={16} color="#818cf8" />}
                                 </div>
-                                <div style={{ padding: '12px 16px', borderRadius: msg.role === 'user' ? '17px 4px 17px 17px' : '4px 17px 17px 17px', background: msg.role === 'user' ? 'linear-gradient(135deg,rgba(79,70,229,0.22),rgba(124,58,237,0.17))' : 'rgba(255,255,255,0.04)', border: `1px solid ${msg.role === 'user' ? 'rgba(99,102,241,0.25)' : 'var(--border)'}`, backdropFilter: 'blur(8px)' }}>
+                                <div style={{ padding: msg.role === 'user' ? '12px 18px' : '4px 0', borderRadius: 16, background: msg.role === 'user' ? '#1e293b' : 'transparent' }}>
                                     {msg.role === 'user' ? (
-                                        <p style={{ color: '#e0e7ff', fontSize: '0.91rem', lineHeight: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
+                                        <p style={{ color: '#f8fafc', fontSize: '0.95rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
                                     ) : (
-                                        <div style={{ color: 'var(--text-primary)', fontSize: '0.91rem', lineHeight: 1.75, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
+                                        <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: 1.6, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
                                             <ReactMarkdown>{msg.content}</ReactMarkdown>
                                         </div>
                                     )}
@@ -83,10 +80,10 @@ const StudentDashboard = () => {
                         </div>
                     ))}
                     {loading && (
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                            <div style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#0f172a,#1e293b)', border: '1px solid rgba(99,102,241,0.25)' }}><Bot size={12} color="#818cf8" /></div>
-                            <div style={{ padding: '12px 16px', borderRadius: '4px 17px 17px 17px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
-                                <div className="dot-flashing" style={{ display: 'flex', gap: 4 }}><span /><span /><span /></div>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)', marginTop: 4 }}><Bot size={16} color="#818cf8" /></div>
+                            <div style={{ padding: '8px 0', color: 'var(--text-muted)' }}>
+                                <div className="dot-flashing" style={{ display: 'flex', gap: 4, height: 16, alignItems: 'center' }}><span /><span /><span /></div>
                             </div>
                         </div>
                     )}
@@ -143,12 +140,23 @@ const StudentDashboard = () => {
                     ))}
                 </div>
 
-                {/* Input */}
-                <div style={{ padding: '6px 28px 18px', maxWidth: 760, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-                    <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 15, padding: '8px 8px 8px 18px', transition: 'border-color 0.2s' }}>
-                        <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Ask anything about your library…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.91rem', fontFamily: 'inherit' }} />
-                        <button type="submit" disabled={!input.trim() || loading} className="btn-gradient" style={{ padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.84rem', borderRadius: 9, whiteSpace: 'nowrap' }}>
-                            <Send size={13} /> Send
+                <div style={{ padding: '12px 28px 24px', maxWidth: 760, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+                    <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: '#1e293b', borderRadius: 16, padding: '8px 8px 8px 16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)' }}>
+                        <textarea 
+                            value={input} 
+                            onChange={e => setInput(e.target.value)} 
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendMessage();
+                                }
+                            }}
+                            placeholder="Ask me anything..." 
+                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'none', minHeight: '24px', maxHeight: '200px', padding: '6px 0', lineHeight: 1.5 }} 
+                            rows={1}
+                        />
+                        <button type="submit" disabled={!input.trim() || loading} style={{ width: 36, height: 36, borderRadius: '50%', background: input.trim() ? '#e2e8f0' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', padding: 0 }}>
+                            <Send size={16} style={{ marginLeft: 2 }} />
                         </button>
                     </form>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingInline: 2 }}>
