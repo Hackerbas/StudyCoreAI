@@ -11,19 +11,21 @@ const AI_MODES = [
     { id: 'advanced', icon: GraduationCap, name: 'Scholar', desc: 'Detailed academic analysis' },
 ];
 
-const CHIPS = [
-    { label: '📋 What topics are covered?', query: 'What are the main topics covered in the uploaded documents?' },
-    { label: '💡 Explain a key concept', query: 'Pick an important concept from the books and explain it.' },
-    { label: '🧠 Give me a study tip', query: 'Give me a useful study tip based on the content in the library.' },
-    { label: '📝 Make a study plan', query: 'Create a short study plan for the material in my library.' },
-];
 
 const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [level, setLevel] = useState('normal');
     const [showModeSelect, setShowModeSelect] = useState(false);
+    
+    // Book selection state
+    const [books, setBooks] = useState([]);
+    const [selectedBookId, setSelectedBookId] = useState(null);
     const bottomRef = useRef(null);
+
+    useEffect(() => {
+        fetch('/api/library').then(r=>r.json()).then(d=>{ if(d.books) setBooks(d.books); }).catch(()=>{});
+    }, []);
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
@@ -37,10 +39,12 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
         trackEvent('question_asked');
         
         try {
+            const body = { query, mode: level };
+            if (selectedBookId) body.book_id = selectedBookId;
             const res = await fetch('/api/chat', { 
                 method: 'POST', 
                 headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ query, mode: level }) 
+                body: JSON.stringify(body) 
             });
             const data = await res.json();
             setChatMessages([...newMsgList, { role: 'assistant', content: res.ok ? data.response : 'Error: ' + data.error }]);
@@ -69,9 +73,16 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                                 </button>
                             </form>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 24 }}>
-                                {CHIPS.map((c, i) => (
-                                    <button key={i} className="chip" onClick={() => sendMessage(c.query)} style={{ background: 'transparent' }}>{c.label}</button>
-                                ))}
+                                <select 
+                                    value={selectedBookId || ''} 
+                                    onChange={e => setSelectedBookId(e.target.value || null)}
+                                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '8px 16px', color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+                                >
+                                    <option value="">📚 All Knowledge</option>
+                                    {books.map(b => (
+                                        <option key={b.id} value={b.id}>{b.title || b.filename.replace('.pdf','')}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -153,9 +164,16 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                     </div>
                     
                     <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px', flexShrink: 0 }} />
-                    {CHIPS.map((c, i) => (
-                        <button key={i} className="chip" onClick={() => sendMessage(c.query)} style={{ whiteSpace: 'nowrap' }}>{c.label}</button>
-                    ))}
+                    <select 
+                        value={selectedBookId || ''} 
+                        onChange={e => setSelectedBookId(e.target.value || null)}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '6px 14px', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', outline: 'none', maxWidth: 200, textOverflow: 'ellipsis' }}
+                    >
+                        <option value="">📚 All Knowledge</option>
+                        {books.map(b => (
+                            <option key={b.id} value={b.id}>{b.title || b.filename.replace('.pdf','')}</option>
+                        ))}
+                    </select>
                 </div>
 
                 <div style={{ padding: '12px 28px 24px', maxWidth: 760, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

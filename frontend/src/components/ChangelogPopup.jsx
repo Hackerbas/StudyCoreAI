@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Check, BookOpen, Clock, PenTool, LayoutTemplate, ShieldCheck, CheckCircle, Zap, Upload } from 'lucide-react';
 
 // Update this version string whenever we want the popup to show again!
-const CURRENT_VERSION = 'v1.4.0';
+const CURRENT_VERSION = 'v1.5.0';
 
 const ChangelogPopup = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -24,6 +24,21 @@ const ChangelogPopup = () => {
     if (!isOpen) return null;
 
     const changes = [
+        {
+            icon: <Sparkles size={18} color="#818cf8"/>,
+            title: 'Targeted Book Chat',
+            desc: 'You can now select a specific book from the dropdown before chatting! The AI will strictly focus only on that book instead of searching the entire library, making responses incredibly fast and hyper-accurate.'
+        },
+        {
+            icon: <Zap size={18} color="#fbbf24"/>,
+            title: 'ELI5 Beginner Engine',
+            desc: 'The "Beginner" AI mode has been completely rewritten. It now aggressively uses an ELI5 (Explain Like I\'m 5) structure with fun analogies, completely stripping out complex academic jargon.'
+        },
+        {
+            icon: <CheckCircle size={18} color="#4ade80"/>,
+            title: 'Multiple Chats & Clean UI',
+            desc: 'Your chats are now explicitly saved individually in the left sidebar! You can rename or delete them. Oh, and the chat UI got a major visual cleanup—it\'s now clean, flat, and Google-like.'
+        },
         {
             icon: <Upload size={18} color="#818cf8"/>,
             title: 'Admin Panel — Full Revamp',
