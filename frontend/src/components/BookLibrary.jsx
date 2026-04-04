@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock } from 'lucide-react';
 
 const SUBJECT_COLORS = {
-    Mathematics:        { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', border: 'rgba(251,191,36,0.25)' },
-    Physics:            { bg: 'rgba(96,165,250,0.1)',  color: '#60a5fa', border: 'rgba(96,165,250,0.25)'  },
-    Chemistry:          { bg: 'rgba(52,211,153,0.1)',  color: '#34d399', border: 'rgba(52,211,153,0.25)'  },
-    Biology:            { bg: 'rgba(110,231,183,0.1)', color: '#6ee7b7', border: 'rgba(110,231,183,0.25)' },
-    History:            { bg: 'rgba(249,115,22,0.1)',  color: '#fb923c', border: 'rgba(249,115,22,0.25)'  },
-    English:            { bg: 'rgba(232,121,249,0.1)', color: '#e879f9', border: 'rgba(232,121,249,0.25)' },
-    Turkish:            { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', border: 'rgba(239,68,68,0.25)' },
-    'Computer Science': { bg: 'rgba(99,102,241,0.1)',  color: '#818cf8', border: 'rgba(99,102,241,0.25)'  },
-    General:            { bg: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: 'rgba(148,163,184,0.2)'  },
+    Mathematics:        { bg: 'transparent',  color: '#fbbf24', border: 'var(--border)' },
+    Physics:            { bg: 'transparent',  color: '#60a5fa', border: 'var(--border)'  },
+    Chemistry:          { bg: 'transparent',  color: '#34d399', border: 'var(--border)'  },
+    Biology:            { bg: 'transparent', color: '#6ee7b7', border: 'var(--border)' },
+    History:            { bg: 'transparent',  color: '#fb923c', border: 'var(--border)'  },
+    English:            { bg: 'transparent', color: '#e879f9', border: 'var(--border)' },
+    Turkish:            { bg: 'transparent',   color: '#ef4444', border: 'var(--border)' },
+    'Computer Science': { bg: 'transparent',  color: '#818cf8', border: 'var(--border)'  },
+    General:            { bg: 'transparent', color: '#94a3b8', border: 'var(--border)'  },
 };
 
 // ─── Selection Popup (inside right panel only) ────────────────────────────────
@@ -20,18 +20,18 @@ const SelectionPopup = ({ position, onAskAI }) => {
         <div data-sel-popup="1" style={{
             position: 'fixed', top: position.y - 44, left: position.x,
             transform: 'translateX(-50%)',
-            background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+            background: '#1e293b',
             borderRadius: 10, padding: '6px 14px',
             display: 'flex', alignItems: 'center', gap: 6,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999,
             cursor: 'pointer', userSelect: 'none',
-            border: '1px solid rgba(255,255,255,0.15)',
+            border: '1px solid var(--border)',
             animation: 'selPopIn 0.15s ease',
         }} onClick={onAskAI}>
             <Sparkles size={12} color="white" />
             <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>Ask AI</span>
             <div style={{ position:'absolute', bottom:-6, left:'50%', transform:'translateX(-50%)', width:0, height:0,
-                borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid #4f46e5' }} />
+                borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid #1e293b' }} />
         </div>
     );
 };
@@ -113,9 +113,9 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
                 {loading && <div className="dot-flashing" style={{ display:'flex', gap:4, padding:'8px 13px' }}><span/><span/><span/></div>}
                 <div ref={bottomRef}/>
             </div>
-            <div style={{ padding:'10px 12px', borderTop:'1px solid var(--border)', display:'flex', gap:8 }}>
+            <div style={{ padding:'10px 12px', borderTop:'1px solid var(--border)', display:'flex', gap:8, background: '#0f172a' }}>
                 <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Ask about this book…" style={{ flex:1, background:'transparent', border:'none', outline:'none', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'inherit' }}/>
-                <button onClick={()=>sendMsg()} disabled={!input.trim()||loading} className="btn-gradient" style={{ padding:'6px 12px', fontSize:'0.78rem', borderRadius:8, display:'flex', alignItems:'center', gap:4 }}><Send size={12}/></button>
+                <button onClick={()=>sendMsg()} disabled={!input.trim()||loading} style={{ background: '#334155', color: 'white', padding:'6px 12px', fontSize:'0.78rem', borderRadius:8, display:'flex', alignItems:'center', gap:4, border: 'none', cursor: 'pointer' }}><Send size={12}/></button>
             </div>
         </div>
     );
@@ -134,14 +134,14 @@ const NotesPanel = ({ bookId }) => {
     const del = id => { const n=notes.filter(n=>n.id!==id); setNotes(n); localStorage.setItem(key, JSON.stringify(n)); };
     return (
         <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-            <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', gap:8 }}>
-                <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a note…" rows={2} style={{ flex:1, background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)', padding:'7px 10px', fontSize:'0.8rem', fontFamily:'inherit', resize:'none', outline:'none' }}/>
-                <button onClick={save} className="btn-gradient" style={{ padding:'6px 12px', borderRadius:8, fontSize:'0.78rem', alignSelf:'flex-end' }}>Save</button>
+            <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', gap:8, background: '#0f172a' }}>
+                <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a note…" rows={2} style={{ flex:1, background:'#1e293b', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)', padding:'7px 10px', fontSize:'0.8rem', fontFamily:'inherit', resize:'none', outline:'none' }}/>
+                <button onClick={save} style={{ background: '#334155', color: 'white', border: 'none', cursor: 'pointer', padding:'6px 12px', borderRadius:8, fontSize:'0.78rem', alignSelf:'flex-end' }}>Save</button>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:7 }}>
                 {notes.length === 0 && <p style={{ color:'var(--text-muted)', fontSize:'0.8rem', textAlign:'center', marginTop:16 }}>No notes yet.</p>}
                 {notes.map(n => (
-                    <div key={n.id} style={{ padding:'9px 11px', borderRadius:9, background:'rgba(251,191,36,0.06)', border:'1px solid rgba(251,191,36,0.15)' }}>
+                    <div key={n.id} style={{ padding:'9px 11px', borderRadius:9, background:'#1e293b', border:'1px solid var(--border)' }}>
                         <p style={{ fontSize:'0.8rem', color:'var(--text-primary)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{n.text}</p>
                         <div style={{ display:'flex', justifyContent:'space-between', marginTop:5 }}>
                             <span style={{ fontSize:'0.67rem', color:'var(--text-muted)' }}>{n.ts}</span>
@@ -308,8 +308,8 @@ const BookReader = ({ bookMeta, onBack, user }) => {
             {selPopup && <SelectionPopup position={selPopup} onAskAI={handleSelAskAI} />}
 
             {/* Topbar */}
-            <div style={{ padding:'10px 20px', borderBottom:'1px solid var(--border)', background:'rgba(6,11,24,0.9)', display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
-                <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-card)', color:'var(--text-secondary)', cursor:'pointer', fontSize:'0.8rem', fontWeight:600, fontFamily:'inherit', transition:'all 0.2s', whiteSpace:'nowrap' }}
+            <div style={{ padding:'10px 20px', borderBottom:'1px solid var(--border)', background:'#0b0f19', display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
+                <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'#1e293b', color:'var(--text-secondary)', cursor:'pointer', fontSize:'0.8rem', fontWeight:600, fontFamily:'inherit', transition:'all 0.2s', whiteSpace:'nowrap' }}
                 onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-secondary)'}
                 ><ArrowLeft size={13}/> Back</button>
                 <div style={{ flex:1, minWidth:0 }}>
@@ -384,15 +384,15 @@ const BookReader = ({ bookMeta, onBack, user }) => {
                                 position:'absolute', bottom:20, right:20,
                                 display:'flex', alignItems:'center', gap:7,
                                 padding:'9px 16px', borderRadius:24,
-                                background:'linear-gradient(135deg,#4f46e5,#7c3aed)',
-                                border:'1px solid rgba(255,255,255,0.15)',
+                                background:'#1e293b',
+                                border:'1px solid var(--border)',
                                 color:'white', fontWeight:700, fontSize:'0.8rem',
                                 cursor:'pointer', fontFamily:'inherit',
-                                boxShadow:'0 4px 20px rgba(79,70,229,0.45)',
+                                boxShadow:'0 4px 12px rgba(0,0,0,0.3)',
                                 transition:'all 0.2s',
                             }}
-                            onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.05)';e.currentTarget.style.boxShadow='0 6px 28px rgba(79,70,229,0.6)';}}
-                            onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow='0 4px 20px rgba(79,70,229,0.45)';}}
+                            onMouseEnter={e=>{e.currentTarget.style.background='#334155';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='#1e293b';}}
                         >
                             <Sparkles size={13}/> Ask AI
                         </button>
@@ -416,7 +416,7 @@ const BookReader = ({ bookMeta, onBack, user }) => {
                 </div>
 
                 {/* Right panel */}
-                <div ref={rightPanelRef} style={{ width:320, flexShrink:0, borderLeft:'1px solid var(--border)', display:'flex', flexDirection:'column', background:'rgba(6,11,24,0.75)' }} onMouseUp={handleRightPanelMouseUp}>
+                <div ref={rightPanelRef} style={{ width:320, flexShrink:0, borderLeft:'1px solid var(--border)', display:'flex', flexDirection:'column', background:'#0f172a' }} onMouseUp={handleRightPanelMouseUp}>
                     <div style={{ display:'flex', borderBottom:'1px solid var(--border)' }}>
                         {[{id:'chat',icon:<Bot size={13}/>,label:'Ask AI'},{id:'notes',icon:<StickyNote size={13}/>,label:'My Notes'}].map(t=>(
                             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:'11px', display:'flex', alignItems:'center', justifyContent:'center', gap:5, border:'none', background:'transparent', color:tab===t.id?'#818cf8':'var(--text-muted)', fontWeight:tab===t.id?700:400, fontSize:'0.8rem', cursor:'pointer', fontFamily:'inherit', borderBottom:tab===t.id?'2px solid #6366f1':'2px solid transparent', transition:'all 0.2s' }}>
@@ -478,7 +478,7 @@ const BookLibrary = ({ user }) => {
             <div style={{ maxWidth:900, margin:'0 auto', padding:'32px 28px' }}>
                 <div style={{ marginBottom:24 }}>
                     <h1 style={{ fontSize:'1.6rem', fontWeight:800, letterSpacing:'-0.03em', marginBottom:4 }}>
-                        📚 Book<span className="gradient-text">AI</span>
+                        📚 Book<span style={{ color: '#818cf8' }}>AI</span>
                     </h1>
                     <p style={{ color:'var(--text-secondary)', fontSize:'0.88rem' }}>
                         {gradeLevel
@@ -517,9 +517,9 @@ const BookLibrary = ({ user }) => {
                             {bks.map(book => {
                                 const sc = SUBJECT_COLORS[book.subject]||SUBJECT_COLORS.General;
                                 return (
-                                    <button key={book.id} onClick={()=>setActiveBook(book)} style={{ display:'flex',flexDirection:'column',gap:12,padding:'18px 16px',borderRadius:14,border:'1px solid var(--border)',background:'var(--bg-card)',cursor:'pointer',textAlign:'left',fontFamily:'inherit',transition:'all 0.25s',position:'relative',overflow:'hidden' }}
-                                    onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.borderColor=sc.border;e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,0.3)';}}
-                                    onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='none';}}
+                                    <button key={book.id} onClick={()=>setActiveBook(book)} style={{ display:'flex',flexDirection:'column',gap:12,padding:'18px 16px',borderRadius:14,border:'1px solid var(--border)',background:'#1e293b',cursor:'pointer',textAlign:'left',fontFamily:'inherit',transition:'all 0.2s',position:'relative',overflow:'hidden' }}
+                                    onMouseEnter={e=>{e.currentTarget.style.borderColor='#475569';}}
+                                    onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';}}
                                     >
                                         <div style={{ position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${sc.color},transparent)`,borderRadius:'14px 14px 0 0' }}/>
                                         <div style={{ width:44,height:44,borderRadius:12,background:sc.bg,display:'flex',alignItems:'center',justifyContent:'center' }}>

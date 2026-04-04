@@ -40,7 +40,7 @@ export const trackEvent = (event, payload = {}) => {
 
 const StatCard = ({ icon, label, value, sub, color = '#818cf8' }) => (
     <div className="glass" style={{ padding:'22px 20px' }}>
-        <div style={{ width:40,height:40,borderRadius:11,background:`${color}18`,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:14 }}>
+        <div style={{ width:40,height:40,borderRadius:11,background:'var(--bg-card-hover)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:14 }}>
             {React.cloneElement(icon, { color, size:20 })}
         </div>
         <p style={{ fontSize:'2rem',fontWeight:800,letterSpacing:'-0.04em',color:'var(--text-primary)',lineHeight:1 }}>{value}</p>
@@ -73,7 +73,7 @@ const StatsView = () => {
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:30,flexWrap:'wrap',gap:12 }}>
                     <div>
                         <h1 style={{ fontSize:'1.55rem',fontWeight:800,letterSpacing:'-0.03em',display:'flex',alignItems:'center',gap:10,marginBottom:4 }}>
-                            <BarChart2 size={24} color="#818cf8"/> My <span className="gradient-text">Study Stats</span>
+                            <BarChart2 size={24} color="var(--text-secondary)"/> My <span style={{ color: 'var(--accent)' }}>Study Stats</span>
                         </h1>
                         <p style={{ color:'var(--text-secondary)',fontSize:'0.86rem' }}>Your personal learning progress — stored locally in your browser.</p>
                     </div>
@@ -96,11 +96,11 @@ const StatsView = () => {
                 {/* Quiz history */}
                 {stats.quiz_scores?.length > 0 && (
                     <div className="glass" style={{ padding:'22px 24px' }}>
-                        <h2 style={{ fontSize:'0.96rem',fontWeight:700,marginBottom:16,display:'flex',alignItems:'center',gap:8 }}><Brain size={16} color="#c084fc"/> Quiz History</h2>
+                        <h2 style={{ fontSize:'0.96rem',fontWeight:700,marginBottom:16,display:'flex',alignItems:'center',gap:8 }}><Brain size={16} color="var(--accent)"/> Quiz History</h2>
                         <div style={{ display:'flex',flexWrap:'wrap',gap:8 }}>
                             {stats.quiz_scores.slice(-20).reverse().map((score,i) => (
-                                <div key={i} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 14px',borderRadius:10,background:score>=4?'rgba(34,197,94,0.08)':score>=3?'rgba(251,191,36,0.08)':'rgba(239,68,68,0.08)', border:`1px solid ${score>=4?'rgba(34,197,94,0.25)':score>=3?'rgba(251,191,36,0.25)':'rgba(239,68,68,0.2)'}` }}>
-                                    <span style={{ fontSize:'1.1rem',fontWeight:800,color:score>=4?'#4ade80':score>=3?'#fbbf24':'#f87171' }}>{score}/5</span>
+                                <div key={i} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 14px',borderRadius:10,background:'var(--bg-card)', border:`1px solid ${score>=4?'var(--success)':score>=3?'var(--warning)':'var(--danger)'}` }}>
+                                    <span style={{ fontSize:'1.1rem',fontWeight:800,color:score>=4?'var(--success)':score>=3?'var(--warning)':'var(--danger)' }}>{score}/5</span>
                                     <span style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>Quiz {stats.quiz_scores.length - i}</span>
                                 </div>
                             ))}

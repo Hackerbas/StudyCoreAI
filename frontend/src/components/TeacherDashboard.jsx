@@ -231,8 +231,8 @@ const BookCard = ({ book, onDelete, onEdit, deleting }) => {
         : `Gr ${book.min_grade}+`;
     return (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', transition: 'all 0.2s' }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+            background: 'var(--bg-card)', border: '1px solid var(--border)', transition: 'all 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
         >
             {/* Subject dot / icon */}
@@ -404,7 +404,7 @@ const TeacherDashboard = () => {
                 {/* Header */}
                 <div style={{ marginBottom: 28 }}>
                     <h1 style={{ fontSize: '1.7rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: 4 }}>
-                        Library <span className="gradient-text">Management</span>
+                        Library <span style={{ color: 'var(--accent)' }}>Management</span>
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                         Upload, organise and manage all educational materials for your school.
