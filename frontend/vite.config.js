@@ -6,12 +6,17 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+        outDir: 'dist',
+        emptyOutDir: true,
     },
-  },
+    resolve: {
+        alias: {
+            "@": path.resolve(__dirname, "./src"),
+        },
+    },
+    define: {
+        'process.env.VERCEL_ANALYTICS_ID': JSON.stringify(process.env.VERCEL_ANALYTICS_ID),
+        'process.env.VERCEL_URL': JSON.stringify(process.env.VERCEL_URL),
+        'process.env.VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV)
+    }
 })
