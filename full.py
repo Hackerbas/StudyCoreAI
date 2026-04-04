@@ -129,9 +129,13 @@ def register():
     role = data.get('role', 'Student') # Default to Student
     grade_level = data.get('grade_level')
     dob = data.get('dob')
+    teacher_password = data.get('teacher_password')
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
+
+    if role == 'Teacher' and teacher_password != 'u5a0qMj9xLPYwWJbG91G':
+        return jsonify({'error': 'Invalid Teacher Access Code'}), 403
 
     if role == 'Student' and not grade_level:
          return jsonify({'error': 'Grade level required for students'}), 400
@@ -483,23 +487,22 @@ def chat():
                         if len(context) > 15000: break
 
         chat_completion = groq_chat_with_rotation(
-            temperature=0.1,  # Strict adherence to context
+            temperature=0.4,  # More conversational and flexible
             messages=[
             {
                 "role": "system",
-                "content": f"""You are StudyCore AI, a helpful assistant for a student's private library.
+                "content": f"""You are StudyCore AI, a helpful, patient, and easy-to-understand tutor for a student.
 
 Context from student's library:
 {context}
 
 Instructions:
-1.  **Strictly Based on Context:** Answer the student's question using the information provided above.
-2.  **Provide Examples:** Whenever explaining a concept, you MUST provide explicit examples, quotes, or case studies directly from the provided textbook context.
-3.  **Greetings Allowed:** You may reply to greetings politely.
-4.  **Summaries Allowed:** If asked for a summary or topics, use the provided book beginnings/snippets.
-5.  **Unknowns:** If the answer is not in the context, state: "I cannot find the answer to that in your uploaded library."
-6.  **CRITICAL RULE:** DO NOT use outside knowledge. If the provided context does not explicitly contain the answer, you MUST refuse to answer. You are NOT allowed to answer trivia questions unless the answer is in the text.
-7.  **Tone:** Professional, encouraging, and concise."""
+1.  **Context-Based & Intuitive:** Answer the student's question using the information above. If their question is brief, politely deduce what they mean instead of demanding highly detailed prompts.
+2.  **Simple & Clear Responses:** The student should get a clear, easy-to-understand, simple answer right away without having to ask multiple times. Avoid overly dense language unless asked for an advanced explanation.
+3.  **Use Rich Markdown Formatting:** You MUST use Markdown formatting in your responses. Use **bold** for key terms, `code blocks` if relevant, and headings (##) or lists (-, 1.) to break down your answers so they are beautifully organized and readable.
+4.  **Provide Examples:** Make concepts concrete by citing examples from the text.
+5.  **Unknowns:** If the topic is entirely absent from the library, say "I cannot find the answer to that in your uploaded library." Do not guess or use outside knowledge.
+6.  **Tone:** Friendly, accessible, well-structured, and highly readable."""
             },
             {
                 "role": "user",

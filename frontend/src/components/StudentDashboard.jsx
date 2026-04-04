@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { trackEvent } from './StatsView';
 
 const STORAGE_KEY = 'studycore_chat_history';
@@ -69,7 +70,13 @@ const StudentDashboard = () => {
                                     {msg.role==='user'?<User size={12} color="white"/>:<Bot size={12} color="#818cf8"/>}
                                 </div>
                                 <div style={{ padding:'12px 16px',borderRadius:msg.role==='user'?'17px 4px 17px 17px':'4px 17px 17px 17px',background:msg.role==='user'?'linear-gradient(135deg,rgba(79,70,229,0.22),rgba(124,58,237,0.17))':'rgba(255,255,255,0.04)',border:`1px solid ${msg.role==='user'?'rgba(99,102,241,0.25)':'var(--border)'}`,backdropFilter:'blur(8px)' }}>
-                                    <p style={{ color:msg.role==='user'?'#e0e7ff':'var(--text-primary)',fontSize:'0.91rem',lineHeight:1.75,whiteSpace:'pre-wrap',wordBreak:'break-word',margin:0 }}>{msg.content}</p>
+                                    {msg.role === 'user' ? (
+                                        <p style={{ color:'#e0e7ff',fontSize:'0.91rem',lineHeight:1.75,whiteSpace:'pre-wrap',wordBreak:'break-word',margin:0 }}>{msg.content}</p>
+                                    ) : (
+                                        <div style={{ color:'var(--text-primary)',fontSize:'0.91rem',lineHeight:1.75,wordBreak:'break-word',margin:0 }} className="markdown-body">
+                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
