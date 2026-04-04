@@ -97,7 +97,7 @@ const StudentDashboard = () => {
             {/* Bottom zone */}
             <div style={{ flexShrink: 0, position: 'relative', zIndex: 1 }}>
                 {/* Explanation level + chips row */}
-                <div style={{ maxWidth: 760, margin: '0 auto', paddingInline: 28, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center' }}>
+                <div style={{ maxWidth: 760, margin: '0 auto', paddingInline: 28, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     
                     {/* Model selector dropdown */}
                     <div style={{ position: 'relative' }}>
@@ -111,9 +111,9 @@ const StudentDashboard = () => {
                         </button>
 
                         {showModeSelect && (
-                            <>
-                                <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowModeSelect(false)} />
-                                <div className="animate-fade-up" style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: '#0f172a', border: '1px solid var(--border)', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, width: 250, boxShadow: '0 12px 40px rgba(0,0,0,0.6)', zIndex: 50, transformOrigin: 'bottom left' }}>
+                            <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, zIndex: 100 }}>
+                                <div style={{ position: 'fixed', inset: 0, zIndex: 101 }} onClick={() => setShowModeSelect(false)} />
+                                <div className="animate-fade-up" style={{ position: 'relative', background: '#0f172a', border: '1px solid var(--border)', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, width: 250, boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.2)', zIndex: 102, transformOrigin: 'bottom left' }}>
                                     {AI_MODES.map(mode => {
                                         const Icon = mode.icon;
                                         const isActive = level === mode.id;
@@ -133,7 +133,7 @@ const StudentDashboard = () => {
                                         );
                                     })}
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                     
