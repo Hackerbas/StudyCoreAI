@@ -86,8 +86,20 @@ export default function AdvancedPdfReader({ pdfUrl, initialPage = 1, onPageChang
         return aiHighlights.filter(h => h.page === pageNumber && h.note);
     }, [aiHighlights, pageNumber]);
 
+    const containerRef = React.useRef(null);
+    const [containerWidth, setContainerWidth] = useState(800);
+
+    React.useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver(entries => {
+            setContainerWidth(entries[0].contentRect.width - 40); // 40px padding for safety
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
+
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#1a1a2e', color: 'white' }} onMouseUp={handleMouseUp}>
+        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#0b0f19', color: 'white' }} onMouseUp={handleMouseUp}>
             
             {/* Selection Popup */}
             {selPopup && (
@@ -103,7 +115,7 @@ export default function AdvancedPdfReader({ pdfUrl, initialPage = 1, onPageChang
                 </div>
             )}
 
-            <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', padding: '20px 0', position: 'relative' }}>
+            <div ref={containerRef} style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', padding: '20px 0', position: 'relative' }}>
                 <Document
                     file={pdfUrl}
                     onLoadSuccess={onDocumentLoadSuccess}
@@ -114,7 +126,7 @@ export default function AdvancedPdfReader({ pdfUrl, initialPage = 1, onPageChang
                         renderAnnotationLayer={true} 
                         renderTextLayer={true}
                         customTextRenderer={customTextRenderer}
-                        width={Math.min(window.innerWidth * 0.5, 800)} // Responsive scaling approximation
+                        width={containerWidth} // Completely responsive!
                         className="transition-all duration-300 ease-in-out"
                     />
                     
@@ -131,17 +143,20 @@ export default function AdvancedPdfReader({ pdfUrl, initialPage = 1, onPageChang
             </div>
 
             {/* Pagination Controls */}
-            <div style={{ height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, borderTop: '1px solid rgba(255,255,255,0.1)', background: '#0f172a' }}>
-                <button onClick={() => changePage(-1)} disabled={pageNumber <= 1} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: pageNumber > 1 ? 'pointer' : 'default', opacity: pageNumber <= 1 ? 0.3 : 1 }}>
+            <div style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, borderTop: '1px solid var(--border)', background: '#0b0f19' }}>
+                <button onClick={() => changePage(-1)} disabled={pageNumber <= 1} style={{ background: '#1e293b', border: '1px solid var(--border)', color: 'white', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: pageNumber > 1 ? 'pointer' : 'default', opacity: pageNumber <= 1 ? 0.4 : 1, transition: 'all 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#334155'} onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}>
                     <ChevronLeft size={18} />
                 </button>
-                <span style={{ fontSize: '0.9rem', color: '#f1f5f9' }}>Page {pageNumber} of {numPages || '--'}</span>
-                <button onClick={() => changePage(1)} disabled={pageNumber >= numPages} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: pageNumber < numPages ? 'pointer' : 'default', opacity: pageNumber >= numPages ? 0.3 : 1 }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', background: '#1e293b', padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border)' }}>Page {pageNumber} of {numPages || '--'}</span>
+                <button onClick={() => changePage(1)} disabled={pageNumber >= numPages} style={{ background: '#1e293b', border: '1px solid var(--border)', color: 'white', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: pageNumber < numPages ? 'pointer' : 'default', opacity: pageNumber >= numPages ? 0.4 : 1, transition: 'all 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#334155'} onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}>
                     <ChevronRight size={18} />
                 </button>
             </div>
             <style>{`
                 @keyframes selPopIn { from { opacity:0; transform:translate(-50%,6px); } to { opacity:1; transform:translate(-50%,0); } }
+
                 .react-pdf__Page__canvas { border-radius: 8px; box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5); }
             `}</style>
         </div>
