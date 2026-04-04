@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Baby, GraduationCap, ChevronDown, Check, Lightbulb } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { trackEvent } from './StatsView';
 
 const STORAGE_KEY = 'studycore_chat_history';
 
-const LEVELS = [
-    { id: 'simple', label: '🧒 Simple', prefix: 'Explain in very simple terms, as if I am a child: ' },
-    { id: 'normal', label: '📖 Normal', prefix: '' },
-    { id: 'advanced', label: '🔬 Advanced', prefix: 'Give a detailed, technical explanation of the following: ' },
+const AI_MODES = [
+    { id: 'normal', icon: Lightbulb, name: 'Core Tutor', desc: 'Balanced, clear explanations', prefix: '' },
+    { id: 'simple', icon: Baby, name: 'Beginner', desc: 'Simple words and analogies', prefix: 'Explain in very simple terms, as if I am a beginner: ' },
+    { id: 'advanced', icon: GraduationCap, name: 'Scholar', desc: 'Detailed academic analysis', prefix: 'Give a detailed, technical explanation of the following: ' },
 ];
 
 const CHIPS = [
@@ -26,14 +26,15 @@ const StudentDashboard = () => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [level, setLevel] = useState('normal');
+    const [showModeSelect, setShowModeSelect] = useState(false);
     const bottomRef = useRef(null);
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
     useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-60))); }, [messages]);
 
     const sendMessage = async (q) => {
-        const levelDef = LEVELS.find(l => l.id === level);
-        const query = levelDef.prefix + (q || input).trim();
+        const modeDef = AI_MODES.find(l => l.id === level);
+        const query = modeDef.prefix + (q || input).trim();
         if (!query.trim() || loading) return;
         const display = (q || input).trim();
         setMessages(p => [...p, { role: 'user', content: display }]);
@@ -97,14 +98,46 @@ const StudentDashboard = () => {
             <div style={{ flexShrink: 0, position: 'relative', zIndex: 1 }}>
                 {/* Explanation level + chips row */}
                 <div style={{ maxWidth: 760, margin: '0 auto', paddingInline: 28, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center' }}>
-                    {/* Level selector */}
-                    <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 8, padding: 3, flexShrink: 0 }}>
-                        {LEVELS.map(l => (
-                            <button key={l.id} onClick={() => setLevel(l.id)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', fontFamily: 'inherit', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', background: level === l.id ? 'rgba(99,102,241,0.2)' : 'transparent', color: level === l.id ? '#818cf8' : 'var(--text-muted)', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-                                {l.label}
-                            </button>
-                        ))}
+                    
+                    {/* Model selector dropdown */}
+                    <div style={{ position: 'relative' }}>
+                        <button onClick={() => setShowModeSelect(!showModeSelect)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '6px 14px', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                            {(() => {
+                                const mode = AI_MODES.find(m => m.id === level);
+                                const Icon = mode.icon;
+                                return <><Icon size={14} color="#818cf8"/> {mode.name} <ChevronDown size={14} color="var(--text-muted)"/></>;
+                            })()}
+                        </button>
+
+                        {showModeSelect && (
+                            <>
+                                <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowModeSelect(false)} />
+                                <div className="animate-fade-up" style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: '#0f172a', border: '1px solid var(--border)', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, width: 250, boxShadow: '0 12px 40px rgba(0,0,0,0.6)', zIndex: 50, transformOrigin: 'bottom left' }}>
+                                    {AI_MODES.map(mode => {
+                                        const Icon = mode.icon;
+                                        const isActive = level === mode.id;
+                                        return (
+                                            <button key={mode.id} onClick={() => { setLevel(mode.id); setShowModeSelect(false); }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isActive ? 'rgba(99,102,241,0.1)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left', width: '100%' }}
+                                            onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                                            onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                                                <div style={{ width: 32, height: 32, borderRadius: 8, background: isActive ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    <Icon size={16} color={isActive ? '#818cf8' : 'var(--text-secondary)'} />
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isActive ? '#ffffff' : 'var(--text-primary)' }}>{mode.name}</div>
+                                                    <div style={{ fontSize: '0.7rem', color: isActive ? '#a5b4fc' : 'var(--text-muted)', marginTop: 2 }}>{mode.desc}</div>
+                                                </div>
+                                                {isActive && <Check size={16} color="#818cf8" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
                     </div>
+                    
+                    <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px', flexShrink: 0 }} />
                     {CHIPS.map((c, i) => (
                         <button key={i} className="chip" onClick={() => sendMessage(c.query)} style={{ whiteSpace: 'nowrap' }}>{c.label}</button>
                     ))}
