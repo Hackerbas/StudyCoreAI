@@ -3,6 +3,7 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/_vercel/(.*)", "destination": "/_vercel/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
