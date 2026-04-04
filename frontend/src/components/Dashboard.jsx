@@ -8,7 +8,7 @@ import StatsView from './StatsView';
 import StudyPlanView from './StudyPlanView';
 import ChangelogPopup from './ChangelogPopup';
 import AdminPanel from './AdminPanel';
-import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar } from 'lucide-react';
+import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const NavItem = ({ icon, label, active, onClick }) => (
@@ -32,6 +32,61 @@ const Dashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [view, setView] = useState('chat');
+
+    const [chats, setChats] = React.useState(() => {
+        try {
+            const s = localStorage.getItem('studycore_chats');
+            if (s) return JSON.parse(s);
+        } catch {}
+        return [{ id: 'default', title: 'New Chat', messages: [], updatedAt: Date.now() }];
+    });
+    const [activeChatId, setActiveChatId] = React.useState(() => {
+        return localStorage.getItem('studycore_active_chat') || 'default';
+    });
+
+    React.useEffect(() => {
+        localStorage.setItem('studycore_chats', JSON.stringify(chats));
+        localStorage.setItem('studycore_active_chat', activeChatId);
+    }, [chats, activeChatId]);
+
+    const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
+
+    const createNewChat = () => {
+        const newChat = { id: Date.now().toString(), title: 'New Chat', messages: [], updatedAt: Date.now() };
+        setChats(prev => [newChat, ...prev]);
+        setActiveChatId(newChat.id);
+        setView('chat'); 
+    };
+
+    const updateMessages = (newMessagesArr) => {
+        setChats(prev => prev.map(c => {
+            if (c.id === activeChatId) {
+                let updatedTitle = c.title;
+                if (c.title === 'New Chat' && newMessagesArr.length > 0) {
+                     const firstUserMsg = newMessagesArr.find(m => m.role === 'user');
+                     if (firstUserMsg) {
+                         updatedTitle = firstUserMsg.content.slice(0, 25) + (firstUserMsg.content.length > 25 ? '...' : '');
+                     }
+                }
+                return { ...c, messages: newMessagesArr, title: updatedTitle, updatedAt: Date.now() };
+            }
+            return c;
+        }));
+    };
+    
+    const deleteChat = (e, id) => {
+        e.stopPropagation();
+        setChats(prev => {
+            const filtered = prev.filter(c => c.id !== id);
+            if (filtered.length === 0) {
+                 const nc = { id: Date.now().toString(), title: 'New Chat', messages: [], updatedAt: Date.now() };
+                 setActiveChatId(nc.id);
+                 return [nc];
+            }
+            if (activeChatId === id) setActiveChatId(filtered[0].id);
+            return filtered;
+        });
+    };
 
     const handleLogout = async () => { await logout(); navigate('/login'); };
 
@@ -69,8 +124,40 @@ const Dashboard = () => {
                     </div>
                     <span style={{ fontWeight: 600, fontSize: '1.05rem', color: '#f1f5f9' }}>StudyCore</span>
                 </div>
-                <div style={{ flex:1,width:'100%' }}>
-                    {navItems.map(item=><NavItem key={item.id} icon={item.icon} label={item.label} active={view===item.id} onClick={()=>setView(item.id)}/>)}
+                <div style={{ padding: '0 12px 16px' }}>
+                    <button onClick={createNewChat} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', borderRadius: 8, background: '#1e293b', border: '1px solid var(--border)', color: '#f8fafc', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#334155'} onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}>
+                        <Plus size={16} /> New Chat
+                    </button>
+                </div>
+                
+                <div style={{ flex: 1, width: '100%', overflowY: 'auto' }}>
+                    <div style={{ padding: '0 8px', marginBottom: 16 }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, paddingLeft: 8 }}>Tools</div>
+                        {navItems.map(item=><NavItem key={item.id} icon={item.icon} label={item.label} active={view===item.id && item.id!=='chat'} onClick={()=>{
+                            setView(item.id);
+                        }}/>)}
+                    </div>
+                    
+                    <div style={{ padding: '0 8px' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, paddingLeft: 8 }}>Recent Chats</div>
+                        {chats.map(c => {
+                            const isActive = view === 'chat' && activeChatId === c.id;
+                            return (
+                                <div key={c.id} onClick={() => { setActiveChatId(c.id); setView('chat'); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent', color: isActive ? '#f8fafc' : 'var(--text-secondary)', cursor: 'pointer', marginBottom: 2, transition: 'all 0.2s' }}
+                                onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }} onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                                        <MessageSquare size={14} flexShrink={0} color={isActive ? '#f8fafc' : 'var(--text-muted)'} />
+                                        <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isActive ? 500 : 400 }}>{c.title}</span>
+                                    </div>
+                                    <button onClick={e => deleteChat(e, c.id)} title="Delete Chat" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
                 <div style={{ borderTop: '1px solid var(--border)', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 8px 0', marginTop: 'auto' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -114,7 +201,7 @@ const Dashboard = () => {
                 )}
 
                 <main style={{ flex:1,overflow:'hidden',display:'flex',flexDirection:'column' }}>
-                    {view==='chat'   && <StudentDashboard />}
+                    {view==='chat'   && <StudentDashboard chatMessages={activeChat.messages} setChatMessages={updateMessages} createNewChat={createNewChat} />}
                     {view==='bookAI' && <BookLibrary user={user} />}
                     {view==='quiz'   && <QuizView />}
                     {view==='plan'   && <StudyPlanView />}

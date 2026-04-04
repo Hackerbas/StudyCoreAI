@@ -18,26 +18,24 @@ const CHIPS = [
     { label: '📝 Make a study plan', query: 'Create a short study plan for the material in my library.' },
 ];
 
-const StudentDashboard = () => {
-    const [messages, setMessages] = useState(() => {
-        try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : [{ role: 'assistant', content: "Hello! I'm **StudyCore AI** — your personal tutor powered by your uploaded books.\n\nAsk me anything, or use the quick buttons below to get started!" }]; }
-        catch { return [{ role: 'assistant', content: "Hello! I'm StudyCore AI." }]; }
-    });
+const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [level, setLevel] = useState('normal');
     const [showModeSelect, setShowModeSelect] = useState(false);
     const bottomRef = useRef(null);
 
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-    useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-60))); }, [messages]);
+    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
     const sendMessage = async (q) => {
         const query = (q || input).trim();
         if (!query || loading) return;
-        setMessages(p => [...p, { role: 'user', content: query }]);
+        
+        const newMsgList = [...chatMessages, { role: 'user', content: query }];
+        setChatMessages(newMsgList);
         setInput(''); setLoading(true);
         trackEvent('question_asked');
+        
         try {
             const res = await fetch('/api/chat', { 
                 method: 'POST', 
@@ -45,23 +43,41 @@ const StudentDashboard = () => {
                 body: JSON.stringify({ query, mode: level }) 
             });
             const data = await res.json();
-            setMessages(p => [...p, { role: 'assistant', content: res.ok ? data.response : 'Error: ' + data.error }]);
-        } catch { setMessages(p => [...p, { role: 'assistant', content: 'Network error.' }]); }
-        finally { setLoading(false); }
+            setChatMessages([...newMsgList, { role: 'assistant', content: res.ok ? data.response : 'Error: ' + data.error }]);
+        } catch { 
+            setChatMessages([...newMsgList, { role: 'assistant', content: 'Network error.' }]); 
+        } finally { 
+            setLoading(false); 
+        }
     };
 
-    const clearChat = () => {
-        const init = [{ role: 'assistant', content: 'Chat cleared! What would you like to study?' }];
-        setMessages(init); localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
-    };
+    const isChatEmpty = chatMessages.length === 0 && !loading;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0f19' }}>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '24px 0 0 0' : '24px 0', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
+                {isChatEmpty ? (
+                    <div className="animate-fade-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingBottom: '10vh' }}>
+                        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 32 }}>What are you working on?</h1>
+                        <div style={{ width: '100%', maxWidth: 760, paddingInline: 28, boxSizing: 'border-box' }}>
+                            <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#1e293b', borderRadius: 24, padding: '12px 12px 12px 20px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)' }}>
+                                <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Ask anything about your library..." style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '1.05rem', fontFamily: 'inherit' }} />
+                                <button type="submit" disabled={!input.trim() || loading} style={{ width: 42, height: 42, borderRadius: '50%', background: input.trim() ? '#e2e8f0' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', padding: 0 }}>
+                                    <Send size={18} style={{ marginLeft: 2 }} />
+                                </button>
+                            </form>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 24 }}>
+                                {CHIPS.map((c, i) => (
+                                    <button key={i} className="chip" onClick={() => sendMessage(c.query)} style={{ background: 'transparent' }}>{c.label}</button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
                 <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', paddingInline: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    {messages.map((msg, idx) => (
+                    {chatMessages.map((msg, idx) => (
                         <div key={idx} className="animate-fade-up" style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                             <div style={{ display: 'flex', gap: 12, maxWidth: '85%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
                                 <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.role === 'user' ? '#334155' : 'transparent', border: msg.role === 'assistant' ? '1px solid rgba(255,255,255,0.1)' : 'none', marginTop: 4 }}>
@@ -89,9 +105,11 @@ const StudentDashboard = () => {
                     )}
                     <div ref={bottomRef} />
                 </div>
+                )}
             </div>
 
-            {/* Bottom zone */}
+            {/* Bottom zone (only shown if not empty) */}
+            {!isChatEmpty && (
             <div style={{ flexShrink: 0, position: 'relative', zIndex: 1 }}>
                 {/* Explanation level + chips row */}
                 <div style={{ maxWidth: 760, margin: '0 auto', paddingInline: 28, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -159,16 +177,14 @@ const StudentDashboard = () => {
                             <Send size={16} style={{ marginLeft: 2 }} />
                         </button>
                     </form>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingInline: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6, paddingInline: 2 }}>
                         <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Sparkles size={10} />Only uses your uploaded books.
                         </p>
-                        <button onClick={clearChat} style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'color 0.2s' }}
-                            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                        >Clear chat</button>
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 };
