@@ -12,8 +12,8 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <AuthProvider>
         <App />
-        <Analytics />
-        <SpeedInsights />
+        <Analytics debug={false} mode="production" />
+        <SpeedInsights debug={false} />
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
