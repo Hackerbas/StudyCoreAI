@@ -1,5 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock } from 'lucide-react';
+import PdfThumbnail from './PdfThumbnail';
+
+// ─── Thumbnail Loader ────────────────────────────────────────────────────────
+const BookThumbnail = ({ bookId, sc }) => {
+    const [pdfUrl, setPdfUrl] = useState(null);
+    useEffect(() => {
+        fetch(`/api/book/${bookId}/pdf`).then(r=>r.json()).then(d=> { if(d.url) setPdfUrl(d.url); }).catch(()=>{});
+    }, [bookId]);
+    
+    const fallback = (
+        <div style={{ width:44,height:44,borderRadius:12,background:sc.bg,display:'flex',alignItems:'center',justifyContent:'center' }}>
+            <BookOpen size={22} color={sc.color}/>
+        </div>
+    );
+    
+    if (!pdfUrl) return fallback;
+    return <PdfThumbnail pdfUrl={pdfUrl} fallbackIcon={fallback} width={44} />;
+};
 
 const SUBJECT_COLORS = {
     Mathematics:        { bg: 'transparent',  color: '#fbbf24', border: 'var(--border)' },
@@ -37,7 +55,9 @@ const SelectionPopup = ({ position, onAskAI }) => {
 };
 
 // ─── Mini AI Chat ──────────────────────────────────────────────────────────────
-const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed }) => {
+import AdvancedPdfReader from './AdvancedPdfReader';
+
+const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed, onHighlights }) => {
     const [msgs,    setMsgs]    = useState([{ role:'assistant', content:`I'm ready! Ask me anything about "${bookName}".` }]);
     const [input,   setInput]   = useState('');
     const [loading, setLoading] = useState(false);
@@ -70,6 +90,12 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
             const data = await res.json();
             if (res.ok) {
                 setMsgs(p => [...p, { role:'assistant', content: data.response, page: data.page || null }]);
+                if (data.highlights && data.highlights.length > 0) {
+                    onHighlights?.(data.highlights);
+                    if (data.highlights[0].page) {
+                        onJumpToPage?.(data.highlights[0].page);
+                    }
+                }
             } else {
                 setMsgs(p => [...p, { role:'assistant', content: 'Error: '+data.error }]);
             }
@@ -161,7 +187,8 @@ const BookReader = ({ bookMeta, onBack, user }) => {
     const [loading,   setLoading]   = useState(true);
     const [error,     setError]     = useState(null);
     const [tab,       setTab]       = useState('chat');
-    const [pageNum,   setPageNum]   = useState(null);
+    const [pageNum,   setPageNum]   = useState(1);
+    const [aiHighlights, setAiHighlights] = useState([]);
     const sc = SUBJECT_COLORS[bookMeta.subject] || SUBJECT_COLORS.General;
 
     // Selection-to-ask state (works in the right panel)
@@ -268,13 +295,11 @@ const BookReader = ({ bookMeta, onBack, user }) => {
         })();
     }, [bookMeta.id]);
 
-    // Jump to page — uses React state so iframe re-renders cleanly
+    // Jump to page
     const jumpToPage = useCallback((n) => {
-        if (!pdfUrl || !n) return;
+        if (!n) return;
         setPageNum(n);
-        // Append a cache-bust to force the iframe to re-load to the new page
-        setIframeSrc(`${pdfUrl}#page=${n}&toolbar=1&navpanes=0&scrollbar=1&_t=${Date.now()}`);
-    }, [pdfUrl]);
+    }, []);
 
     // Selection popup in the right panel
     const handleRightPanelMouseUp = useCallback(() => {
@@ -351,67 +376,17 @@ const BookReader = ({ bookMeta, onBack, user }) => {
                             <p style={{ color:'var(--text-muted)', fontSize:'0.8rem' }}>The PDF may not have been stored in the file bucket. Try re-uploading.</p>
                         </div>
                     )}
-                    {!loading && !error && iframeSrc && (
-                        <iframe
-                            key={iframeSrc}          /* key change forces React to remount = true navigation */
-                            src={iframeSrc}
-                            title={bookMeta.filename}
-                            style={{ width:'100%', height:'100%', border:'none' }}
-                        />
-                    )}
-                    
-                    {/* Transparent Drawing Canvas Overlay */}
-                    {!loading && !error && (
-                        <canvas 
-                            ref={canvasRef}
-                            onMouseDown={startDraw}
-                            onMouseMove={draw}
-                            onMouseUp={stopDraw}
-                            onMouseLeave={stopDraw}
-                            style={{ 
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                                pointerEvents: drawMode ? 'auto' : 'none', cursor: drawMode ? 'crosshair' : 'default',
-                                zIndex: 10
+                    {!loading && !error && pdfUrl && (
+                        <AdvancedPdfReader 
+                            pdfUrl={pdfUrl} 
+                            initialPage={pageNum}
+                            onPageChange={(p) => setPageNum(p)}
+                            aiHighlights={aiHighlights}
+                            onAskAI={text => {
+                                setTab('chat');
+                                setPrefilledMsg(text);
                             }}
                         />
-                    )}
-
-                    {/* Floating "Ask AI" button over the PDF */}
-                    {!loading && !error && (
-                        <button
-                            onClick={() => setTab('chat')}
-                            style={{
-                                position:'absolute', bottom:20, right:20,
-                                display:'flex', alignItems:'center', gap:7,
-                                padding:'9px 16px', borderRadius:24,
-                                background:'#1e293b',
-                                border:'1px solid var(--border)',
-                                color:'white', fontWeight:700, fontSize:'0.8rem',
-                                cursor:'pointer', fontFamily:'inherit',
-                                boxShadow:'0 4px 12px rgba(0,0,0,0.3)',
-                                transition:'all 0.2s',
-                            }}
-                            onMouseEnter={e=>{e.currentTarget.style.background='#334155';}}
-                            onMouseLeave={e=>{e.currentTarget.style.background='#1e293b';}}
-                        >
-                            <Sparkles size={13}/> Ask AI
-                        </button>
-                    )}
-                    
-                    {/* Floating Drawing Toolbar */}
-                    {!loading && !error && (
-                        <div style={{ position:'absolute', bottom:20, left:20, display:'flex', gap:8, zIndex:20 }}>
-                            <button onClick={() => setDrawMode(!drawMode)}
-                                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:24, background:drawMode?'#eab308':'rgba(6,11,24,0.8)', border:`1px solid ${drawMode?'#ca8a04':'var(--border)'}`, color:drawMode?'#000':'var(--text-secondary)', fontWeight:700, fontSize:'0.75rem', cursor:'pointer', fontFamily:'inherit', backdropFilter:'blur(4px)', transition:'all 0.2s', boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}>
-                                <PenTool size={13}/> {drawMode ? 'Drawing On' : 'Draw'}
-                            </button>
-                            {drawMode && (
-                                <button onClick={clearDraw}
-                                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', borderRadius:24, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontWeight:700, fontSize:'0.75rem', cursor:'pointer', fontFamily:'inherit', backdropFilter:'blur(4px)', transition:'all 0.2s' }}>
-                                    <Eraser size={13}/> Clear
-                                </button>
-                            )}
-                        </div>
                     )}
                 </div>
 
@@ -432,6 +407,7 @@ const BookReader = ({ bookMeta, onBack, user }) => {
                                 onJumpToPage={jumpToPage}
                                 prefilledInput={prefilledMsg}
                                 onPrefilledConsumed={() => setPrefilledMsg('')}
+                                onHighlights={h => setAiHighlights(h)}
                               />
                             : <NotesPanel bookId={bookMeta.id}/>
                         }
@@ -522,9 +498,7 @@ const BookLibrary = ({ user }) => {
                                     onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';}}
                                     >
                                         <div style={{ position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${sc.color},transparent)`,borderRadius:'14px 14px 0 0' }}/>
-                                        <div style={{ width:44,height:44,borderRadius:12,background:sc.bg,display:'flex',alignItems:'center',justifyContent:'center' }}>
-                                            <BookOpen size={22} color={sc.color}/>
-                                        </div>
+                                        <BookThumbnail bookId={book.id} sc={sc} />
                                         <div style={{ flex:1 }}>
                                             <p style={{ fontWeight:700,fontSize:'0.88rem',color:'var(--text-primary)',lineHeight:1.4,marginBottom:4 }}>
                                                 {(book.title || book.filename.replace('.pdf','').replace(/_/g,' '))}

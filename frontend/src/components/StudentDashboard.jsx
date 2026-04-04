@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Sparkles, Baby, GraduationCap, ChevronDown, Check, Lightbulb } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { trackEvent } from './StatsView';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const STORAGE_KEY = 'studycore_chat_history';
 
@@ -17,6 +18,13 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
     const [loading, setLoading] = useState(false);
     const [level, setLevel] = useState('normal');
     const [showModeSelect, setShowModeSelect] = useState(false);
+    const { t } = useLanguage();
+
+    const AI_MODES = [
+        { id: 'normal', icon: Lightbulb, name: t('core_tutor'), desc: t('core_tutor_desc') || 'Balanced, clear explanations' },
+        { id: 'simple', icon: Baby, name: t('beginner'), desc: t('beginner_desc') || 'Simple words and analogies' },
+        { id: 'advanced', icon: GraduationCap, name: t('scholar'), desc: t('scholar_desc') || 'Detailed academic analysis' },
+    ];
     
     // Book selection state
     const [books, setBooks] = useState([]);
@@ -64,10 +72,10 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
             <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '24px 0 0 0' : '24px 0', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
                 {isChatEmpty ? (
                     <div className="animate-fade-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingBottom: '10vh' }}>
-                        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 32 }}>What are you working on?</h1>
+                        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 32 }}>{t('what_working_on')}</h1>
                         <div style={{ width: '100%', maxWidth: 760, paddingInline: 28, boxSizing: 'border-box' }}>
                             <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#1e293b', borderRadius: 24, padding: '12px 12px 12px 20px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)' }}>
-                                <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Ask anything about your library..." style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '1.05rem', fontFamily: 'inherit' }} />
+                                <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={t('ask_anything')} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '1.05rem', fontFamily: 'inherit' }} />
                                 <button type="submit" disabled={!input.trim() || loading} style={{ width: 42, height: 42, borderRadius: '50%', background: input.trim() ? '#e2e8f0' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', padding: 0 }}>
                                     <Send size={18} style={{ marginLeft: 2 }} />
                                 </button>
@@ -169,7 +177,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                         onChange={e => setSelectedBookId(e.target.value || null)}
                         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '6px 14px', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', outline: 'none', maxWidth: 200, textOverflow: 'ellipsis' }}
                     >
-                        <option value="">📚 All Knowledge</option>
+                        <option value="">📚 {t('all_knowledge')}</option>
                         {books.map(b => (
                             <option key={b.id} value={b.id}>{b.title || b.filename.replace('.pdf','')}</option>
                         ))}
@@ -187,7 +195,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                                     sendMessage();
                                 }
                             }}
-                            placeholder="Ask me anything..." 
+                            placeholder={t('ask_anything')} 
                             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'none', minHeight: '24px', maxHeight: '200px', padding: '6px 0', lineHeight: 1.5 }} 
                             rows={1}
                         />

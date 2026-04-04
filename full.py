@@ -10,8 +10,35 @@ from groq import Groq
 from groq import RateLimitError
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import redis
+import hashlib
 
 load_dotenv()
+
+# --- REDIS CACHING (Graceful Fallback) ---
+redis_client = None
+try:
+    # Attempt to connect to local Redis standard port, short timeout to not hang
+    redis_client = redis.Redis(host='localhost', port=6379, db=0, socket_timeout=2)
+    redis_client.ping()
+    print("✓ Redis cache initialized.")
+except Exception as e:
+    print(f"⚠ Redis not available (caching disabled): {e}")
+    redis_client = None
+
+def get_cache(key):
+    if not redis_client: return None
+    try:
+        val = redis_client.get(key)
+        if val: return json.loads(val.decode('utf-8'))
+    except: pass
+    return None
+
+def set_cache(key, data, ex=3600):
+    if not redis_client: return
+    try:
+        redis_client.setex(key, ex, json.dumps(data))
+    except: pass
 
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='/')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_local_app')
@@ -142,6 +169,12 @@ def register():
          
     if role == 'Student' and int(grade_level) < 8:
         return jsonify({'error': 'StudyCore is for Grade 8 and above.'}), 400
+
+    # Profanity Blocker
+    PROFANITY_LIST = ['admin', 'root', 'sysadmin', 'fuck', 'shit', 'bitch', 'ass', 'dick', 'cunt', 'pussy', 'whore', 'slut', 'fag', 'nigg', 'n1gg']
+    lower_uname = username.lower()
+    if any(p in lower_uname for p in PROFANITY_LIST):
+        return jsonify({'error': 'Username violates community guidelines.'}), 400
 
     hashed_password = generate_password_hash(password)
     
@@ -294,12 +327,18 @@ def get_library():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
 
+    cache_key = "library_books"
+    cached = get_cache(cache_key)
+    if cached:
+        return jsonify({'books': cached}), 200
+
     try:
         if not supabase: raise Exception("Supabase client not initialized")
         response = supabase.table('books').select(
             'id, filename, title, author, upload_date, subject, min_grade, max_grade, year, description'
         ).execute()
         books = response.data
+        set_cache(cache_key, books, ex=120)  # cache for 2 minutes
         return jsonify({'books': books}), 200
     except Exception as e:
         print(f"Error fetching library: {e}")
@@ -320,6 +359,7 @@ def update_book_meta(book_id):
     try:
         if not supabase: raise Exception("Supabase client not initialized")
         supabase.table('books').update(update).eq('id', book_id).execute()
+        if redis_client: redis_client.delete("library_books") # invalidate cache
         return jsonify({'message': 'Metadata updated'}), 200
     except Exception as e:
         print(f"Error updating book meta: {e}")
@@ -380,6 +420,7 @@ def delete_book(book_id):
             print(f"Storage deletion error (file might not exist): {e}")
 
         supabase.table('books').delete().eq('id', book_id).execute()
+        if redis_client: redis_client.delete("library_books") # invalidate cache
         log_action('Deleted File', f"Deleted book ID {book_id}: {book['filename']}")
         return jsonify({'message': f'"{book["filename"]}" deleted successfully'}), 200
         
@@ -504,6 +545,7 @@ Maintain a friendly and supportive educational tone."""
 
         chat_completion = groq_chat_with_rotation(
             temperature=0.4,
+            response_format={"type": "json_object"},
             messages=[
             {
                 "role": "system",
@@ -516,17 +558,34 @@ Maintain a friendly and supportive educational tone."""
 1. Context-Based & Intuitive: Answer the student's question ONLY using the context above. If their question is brief, politely deduce what they mean.
 2. Formatted for Readability: You MUST use Markdown formatting in your responses. Use **bold** for key terms, `code blocks` if relevant, and headings (##) or lists (-, 1.) to break down your answers so they are beautifully organized.
 3. Provide Concrete Examples: Make concepts real by citing examples directly from the text if available.
-4. Unknowns: If the topic is entirely absent from the library, state clearly that it is not covered in their documents. Do not hallucinate outside information."""
+4. Unknowns: If the topic is entirely absent from the library, state clearly that it is not covered in their documents. Do not hallucinate outside information.
+5. Annotations: You MUST return your ENTIRE final output as a raw JSON object with this exact structure:
+{{
+  "response": "Your full beautifully formatted markdown response here...",
+  "highlights": [
+    {{ "page": 4, "text": "Exact text snippet you are referencing from the context", "note": "Short sticky note for the student" }}
+  ]
+}}
+Only include highlights if you have a specific page and text you want to annotate. If no specific book_id is provided, or no exact match, leave highlights empty."""
             },
             {
                 "role": "user",
                 "content": query,
             }
         ])
-        ai_response = chat_completion.choices[0].message.content
-        result = {'response': ai_response}
-        if found_page:
-            result['page'] = found_page
+        
+        try:
+            ai_data = json.loads(chat_completion.choices[0].message.content)
+            result = {
+                'response': ai_data.get('response', ''),
+                'highlights': ai_data.get('highlights', [])
+            }
+        except json.JSONDecodeError:
+            result = {'response': chat_completion.choices[0].message.content, 'highlights': []}
+            
+        if found_page and not result.get('highlights'):
+            result['highlights'] = [{'page': found_page, 'text': '', 'note': 'Jump to relevant page.'}]
+            
         return jsonify(result), 200
     except Exception as e:
         print(f"Error during chat: {e}")

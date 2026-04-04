@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Check, BookOpen, Clock, PenTool, LayoutTemplate, ShieldCheck, CheckCircle, Zap, Upload } from 'lucide-react';
 
 // Update this version string whenever we want the popup to show again!
-const CURRENT_VERSION = 'v1.5.0';
+const CURRENT_VERSION = 'v2.1.0';
 
 const ChangelogPopup = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -26,68 +26,28 @@ const ChangelogPopup = () => {
     const changes = [
         {
             icon: <Sparkles size={18} color="#818cf8"/>,
-            title: 'Targeted Book Chat',
-            desc: 'You can now select a specific book from the dropdown before chatting! The AI will strictly focus only on that book instead of searching the entire library, making responses incredibly fast and hyper-accurate.'
+            title: 'Full Website Translation & RTL Support',
+            desc: 'StudyCore AI now natively supports English, Arabic, and Turkish! Arabic includes full Right-to-Left (RTL) layout switching.'
         },
         {
-            icon: <Zap size={18} color="#fbbf24"/>,
-            title: 'ELI5 Beginner Engine',
-            desc: 'The "Beginner" AI mode has been completely rewritten. It now aggressively uses an ELI5 (Explain Like I\'m 5) structure with fun analogies, completely stripping out complex academic jargon.'
+            icon: <BookOpen size={18} color="#fbbf24"/>,
+            title: 'Advanced PDF Reader',
+            desc: 'We completely rewrote the PDF reader. Enjoy smooth page transitions, high-quality rendering, and a much cleaner interface.'
         },
         {
-            icon: <CheckCircle size={18} color="#4ade80"/>,
-            title: 'Multiple Chats & Clean UI',
-            desc: 'Your chats are now explicitly saved individually in the left sidebar! You can rename or delete them. Oh, and the chat UI got a major visual cleanup—it\'s now clean, flat, and Google-like.'
-        },
-        {
-            icon: <Upload size={18} color="#818cf8"/>,
-            title: 'Admin Panel — Full Revamp',
-            desc: 'Upload form now accepts Book Title, Author, Min/Max Grade Range, Year, and Description. Library has search & filter, colour-coded cards, stats bar, and an Edit button to update metadata without re-uploading.'
-        },
-        {
-            icon: <Zap size={18} color="#4ade80"/>,
-            title: 'Quiz Mode Fixed',
-            desc: 'Fixed a bug that caused quiz generation to crash silently. Quizzes now generate reliably for all subjects and difficulty levels.'
-        },
-        {
-            icon: <CheckCircle size={18} color="#4ade80"/>,
-            title: 'Study Plan — Fixed Result Mixing',
-            desc: 'Weekly Plans and SRS Worksheets are now strictly isolated in their own tabs. No more results bleeding into each other or requiring a scroll to find.'
-        },
-        {
-            icon: <Zap size={18} color="#fbbf24"/>,
-            title: 'Dropdown Menus Fixed',
-            desc: 'All dropdowns across the app now use a proper forced dark theme — no more unreadable white text on white background.'
-        },
-        {
-            icon: <BookOpen size={18} color="#818cf8"/>,
-            title: 'BookAI Renders Better',
-            desc: 'AI answers in BookAI now render with proper formatting — bold text, bullet points, and paragraph spacing instead of raw text.'
-        },
-        {
-            icon: <ShieldCheck size={18} color="#4ade80"/>,
-            title: 'Strict AI Grounding',
-            desc: 'The AI is now strictly locked to your books and will refuse to use outside knowledge to answer questions.'
-        },
-        {
-            icon: <PenTool size={18} color="#fbbf24"/>,
-            title: 'PDF Drawing Overlay',
-            desc: 'Click "Draw" in the BookReader to highlight and draw directly over your PDFs with a digital highlighter.'
+            icon: <PenTool size={18} color="#4ade80"/>,
+            title: 'AI Highlights & Sticky Notes',
+            desc: 'The AI can now directly interact with your documents! When you ask a question, the AI will highlight exact text on the page and place sticky-note annotations.'
         },
         {
             icon: <LayoutTemplate size={18} color="#818cf8"/>,
-            title: 'AI Study Plan Generator',
-            desc: 'A massive new Dashboard tab. Let the AI analyse your library and build a focused 5-day study curriculum.'
+            title: 'Auto-Generated Book Covers',
+            desc: 'The Library will now automatically render high-resolution thumbnails of the first page of your PDFs instead of simple icons.'
         },
         {
-            icon: <Clock size={18} color="#a78bfa"/>,
-            title: 'Reading Time Tracker',
-            desc: 'We now track how many minutes you spend studying each book. Check the top bar next time you open one!'
-        },
-        {
-            icon: <Check size={18} color="#22c55e"/>,
-            title: 'Turkish Support & UI Fixes',
-            desc: 'Added Turkish language to BookAI and fixed the dark dropdowns on Windows/macOS.'
+            icon: <ShieldCheck size={18} color="#4ade80"/>,
+            title: 'Redis Caching & Security',
+            desc: 'Added robust Redis backend caching for blazing-fast performance, and a strict profanity & reserved-name blocker for new student accounts.'
         }
     ];
 
