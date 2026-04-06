@@ -8,24 +8,27 @@ import StatsView from './StatsView';
 import StudyPlanView from './StudyPlanView';
 import ChangelogPopup from './ChangelogPopup';
 import AdminPanel from './AdminPanel';
-import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar, Plus, Trash2 } from 'lucide-react';
+import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar, Plus, Trash2, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
-const NavItem = ({ icon, label, active, onClick }) => (
-    <button onClick={onClick} style={{
-        display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',
-        gap: 12, width: '100%', padding: '12px 18px', border: 'none', borderRadius: 8,
+const NavItem = ({ icon, label, active, onClick, collapsed }) => (
+    <button onClick={onClick} title={collapsed ? label : undefined} style={{
+        display: 'flex', flexDirection: 'row', alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        gap: 12, width: '100%',
+        padding: collapsed ? '12px 0' : '12px 18px',
+        border: 'none', borderRadius: 8,
         background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
         color: active ? '#f1f5f9' : 'var(--text-muted)',
         cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
-        marginBottom: 4
+        marginBottom: 4,
     }}
     onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
     onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
         {React.cloneElement(icon, { size: 18, color: active ? '#f1f5f9' : 'currentColor' })}
-        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{label}</span>
+        {!collapsed && <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{label}</span>}
     </button>
 );
 
@@ -33,6 +36,7 @@ const Dashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [view, setView] = useState('chat');
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const { t, lang, setLang } = useLanguage();
 
     const [chats, setChats] = React.useState(() => {
@@ -57,7 +61,7 @@ const Dashboard = () => {
         const newChat = { id: Date.now().toString(), title: 'New Chat', messages: [], updatedAt: Date.now() };
         setChats(prev => [newChat, ...prev]);
         setActiveChatId(newChat.id);
-        setView('chat'); 
+        setView('chat');
     };
 
     const updateMessages = (newMessagesArr) => {
@@ -102,9 +106,7 @@ const Dashboard = () => {
     const isGuest   = user.isGuest || user.role === 'Guest';
     const isAdmin   = user.role === 'Admin';
 
-    if (isAdmin) {
-        return <AdminPanel />;
-    }
+    if (isAdmin) return <AdminPanel />;
 
     const navItems = [
         { id:'chat',   icon:<MessageSquare size={18}/>, label: t('dashboard') },
@@ -115,111 +117,178 @@ const Dashboard = () => {
         ...(isTeacher ? [{ id:'manage', icon:<Upload size={18}/>, label:'Manage' }] : []),
     ];
 
+    // Hide the top "TEACHER MODE" header when reading a book — BookReader has its own header
+    const hideTopBar = view === 'bookAI';
+
     return (
-        <div style={{ display:'flex',height:'100vh',overflow:'hidden' }}>
+        <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
             <ChangelogPopup />
-            {/* Left sidebar */}
-            <nav style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--border)', background: '#111318', display: 'flex', flexDirection: 'column', padding: '16px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, padding: '0 8px' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={16} color="#f1f5f9" />
-                    </div>
-                    <span style={{ fontWeight: 600, fontSize: '1.05rem', color: '#f1f5f9' }}>StudyCore</span>
-                </div>
-                <div style={{ padding: '0 12px 16px' }}>
-                    <button onClick={createNewChat} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', borderRadius: 8, background: '#1e293b', border: '1px solid var(--border)', color: '#f8fafc', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#334155'} onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}>
-                        <Plus size={16} /> New Chat
+
+            {/* ── Sidebar ── */}
+            <nav style={{
+                width: sidebarCollapsed ? 58 : 260,
+                flexShrink: 0,
+                borderRight: '1px solid var(--border)',
+                background: '#111318',
+                display: 'flex',
+                flexDirection: 'column',
+                padding: sidebarCollapsed ? '16px 6px' : '16px 12px',
+                transition: 'width 0.22s ease, padding 0.22s ease',
+                overflow: 'hidden',
+                position: 'relative',
+            }}>
+                {/* Logo row + collapse toggle */}
+                <div style={{ display:'flex', alignItems:'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', marginBottom: 24, padding: sidebarCollapsed ? '0' : '0 8px' }}>
+                    {!sidebarCollapsed && (
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                            <div style={{ width:32, height:32, borderRadius:8, background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                <BookOpen size={16} color="#f1f5f9" />
+                            </div>
+                            <span style={{ fontWeight:600, fontSize:'1.05rem', color:'#f1f5f9', whiteSpace:'nowrap' }}>StudyCore</span>
+                        </div>
+                    )}
+                    <button
+                        onClick={() => setSidebarCollapsed(c => !c)}
+                        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        style={{
+                            width: 28, height: 28, borderRadius: 7,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid var(--border)',
+                            color: 'var(--text-muted)', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'all 0.18s', flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#f1f5f9'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >
+                        {sidebarCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}
                     </button>
                 </div>
-                
-                <div style={{ flex: 1, width: '100%', overflowY: 'auto' }}>
-                    <div style={{ padding: '0 8px', marginBottom: 16 }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, paddingLeft: 8 }}>Tools</div>
-                        {navItems.map(item=><NavItem key={item.id} icon={item.icon} label={item.label} active={view===item.id && item.id!=='chat'} onClick={()=>{
-                            setView(item.id);
-                        }}/>)}
+
+                {/* New Chat button */}
+                {!sidebarCollapsed ? (
+                    <div style={{ padding:'0 12px 16px' }}>
+                        <button onClick={createNewChat} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'10px 14px', borderRadius:8, background:'#1e293b', border:'1px solid var(--border)', color:'#f8fafc', fontWeight:600, fontSize:'0.9rem', cursor:'pointer', transition:'all 0.2s', fontFamily:'inherit' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#334155'} onMouseLeave={e => e.currentTarget.style.background='#1e293b'}>
+                            <Plus size={16}/> New Chat
+                        </button>
                     </div>
-                    
-                    <div style={{ padding: '0 8px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, paddingLeft: 8 }}>Recent Chats</div>
-                        {chats.map(c => {
-                            const isActive = view === 'chat' && activeChatId === c.id;
-                            return (
-                                <div key={c.id} onClick={() => { setActiveChatId(c.id); setView('chat'); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent', color: isActive ? '#f8fafc' : 'var(--text-secondary)', cursor: 'pointer', marginBottom: 2, transition: 'all 0.2s' }}
-                                onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }} onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
-                                        <MessageSquare size={14} flexShrink={0} color={isActive ? '#f8fafc' : 'var(--text-muted)'} />
-                                        <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isActive ? 500 : 400 }}>{c.title}</span>
+                ) : (
+                    <div style={{ marginBottom:16, display:'flex', justifyContent:'center' }}>
+                        <button onClick={createNewChat} title="New Chat" style={{ width:36, height:36, borderRadius:8, background:'#1e293b', border:'1px solid var(--border)', color:'#f8fafc', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#334155'} onMouseLeave={e => e.currentTarget.style.background='#1e293b'}>
+                            <Plus size={16}/>
+                        </button>
+                    </div>
+                )}
+
+                {/* Nav items */}
+                <div style={{ flex:1, width:'100%', overflowY:'auto', overflowX:'hidden' }}>
+                    <div style={{ padding: sidebarCollapsed ? '0' : '0 8px', marginBottom:16 }}>
+                        {!sidebarCollapsed && (
+                            <div style={{ fontSize:'0.7rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8, paddingLeft:8 }}>Tools</div>
+                        )}
+                        {navItems.map(item => (
+                            <NavItem
+                                key={item.id}
+                                icon={item.icon}
+                                label={item.label}
+                                active={view===item.id && item.id!=='chat'}
+                                onClick={() => setView(item.id)}
+                                collapsed={sidebarCollapsed}
+                            />
+                        ))}
+                    </div>
+
+                    {/* Recent chats — only when expanded */}
+                    {!sidebarCollapsed && (
+                        <div style={{ padding:'0 8px' }}>
+                            <div style={{ fontSize:'0.7rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8, paddingLeft:8 }}>Recent Chats</div>
+                            {chats.map(c => {
+                                const isActive = view==='chat' && activeChatId===c.id;
+                                return (
+                                    <div key={c.id} onClick={() => { setActiveChatId(c.id); setView('chat'); }} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', borderRadius:8, background:isActive?'rgba(255,255,255,0.08)':'transparent', color:isActive?'#f8fafc':'var(--text-secondary)', cursor:'pointer', marginBottom:2, transition:'all 0.2s' }}
+                                    onMouseEnter={e => { if(!isActive) e.currentTarget.style.background='rgba(255,255,255,0.04)'; }} onMouseLeave={e => { if(!isActive) e.currentTarget.style.background='transparent'; }}>
+                                        <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden' }}>
+                                            <MessageSquare size={14} color={isActive?'#f8fafc':'var(--text-muted)'}/>
+                                            <span style={{ fontSize:'0.85rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontWeight:isActive?500:400 }}>{c.title}</span>
+                                        </div>
+                                        <button onClick={e => deleteChat(e, c.id)} title={t('delete_chat')} style={{ background:'transparent', border:'none', color:'var(--text-muted)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:4, borderRadius:4 }}
+                                        onMouseEnter={e => { e.currentTarget.style.color='#ef4444'; e.currentTarget.style.background='rgba(239,68,68,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color='var(--text-muted)'; e.currentTarget.style.background='transparent'; }}>
+                                            <Trash2 size={14}/>
+                                        </button>
                                     </div>
-                                    <button onClick={e => deleteChat(e, c.id)} title={t('delete_chat')} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}
-                                    onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-                
-                {/* Footer User / Lang Profile */}
-                <div style={{ padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ padding: '0 8px', marginBottom: 12 }}>
-                        <select value={lang} onChange={(e) => setLang(e.target.value)} style={{ width: '100%', background: '#1e293b', border: '1px solid var(--border)', color: '#f1f5f9', padding: '6px 8px', borderRadius: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-                            <option value="en">English</option>
-                            <option value="ar">العربية (Arabic)</option>
-                            <option value="tr">Türkçe (Turkish)</option>
-                        </select>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div title={user.username} style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9', cursor: 'default' }}>
-                                {isGuest ? <User size={16} /> : user.username[0].toUpperCase()}
-                            </div>
-                            <span style={{ fontSize: '0.85rem', color: '#f1f5f9', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
-                                {user.username}
-                            </span>
+                                );
+                            })}
                         </div>
-                        <button onClick={handleLogout} title={t('logout')} style={{ padding: 6, borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', transition: 'all 0.2s' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        ><LogOut size={16} /></button>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: sidebarCollapsed ? '16px 0' : '16px 12px', borderTop:'1px solid var(--border)' }}>
+                    {!sidebarCollapsed && (
+                        <div style={{ padding:'0 8px', marginBottom:12 }}>
+                            <select value={lang} onChange={e => setLang(e.target.value)} style={{ width:'100%', background:'#1e293b', border:'1px solid var(--border)', color:'#f1f5f9', padding:'6px 8px', borderRadius:6, fontSize:'0.8rem', cursor:'pointer' }}>
+                                <option value="en">English</option>
+                                <option value="ar">العربية (Arabic)</option>
+                                <option value="tr">Türkçe (Turkish)</option>
+                            </select>
+                        </div>
+                    )}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0' : '0 8px' }}>
+                        {!sidebarCollapsed && (
+                            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <div title={user.username} style={{ width:32, height:32, borderRadius:'50%', background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.85rem', fontWeight:600, color:'#f1f5f9', cursor:'default', flexShrink:0 }}>
+                                    {isGuest ? <User size={16}/> : user.username[0].toUpperCase()}
+                                </div>
+                                <span style={{ fontSize:'0.85rem', color:'#f1f5f9', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:110 }}>
+                                    {user.username}
+                                </span>
+                            </div>
+                        )}
+                        <button onClick={handleLogout} title={t('logout')} style={{ padding:6, borderRadius:6, border:'none', background:'transparent', cursor:'pointer', color:'var(--text-muted)', transition:'all 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                        ><LogOut size={16}/></button>
                     </div>
                 </div>
             </nav>
 
-            {/* Main content */}
-            <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
-                {/* Top bar */}
-                <header style={{ height: 50, flexShrink: 0, borderBottom: '1px solid var(--border)', background: '#111318', display: 'flex', alignItems: 'center', paddingInline: 24, gap: 12 }}>
-                    <span className="badge" style={{ background: '#1e293b', color: '#f1f5f9', border: '1px solid var(--border)', fontWeight: 500, padding: '4px 10px' }}>
-                        {user.role} {t('mode')}
-                    </span>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {user.grade_level ? `Grade ${user.grade_level}` : ''}
-                    </span>
-                </header>
+            {/* ── Main content ── */}
+            <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+                {/* Top bar — hidden when reading a book in BookAI */}
+                {!hideTopBar && (
+                    <header style={{ height:50, flexShrink:0, borderBottom:'1px solid var(--border)', background:'#111318', display:'flex', alignItems:'center', paddingInline:24, gap:12 }}>
+                        <span className="badge" style={{ background:'#1e293b', color:'#f1f5f9', border:'1px solid var(--border)', fontWeight:500, padding:'4px 10px' }}>
+                            {user.role} {t('mode')}
+                        </span>
+                        <span style={{ marginLeft:'auto', fontSize:'0.8rem', color:'var(--text-muted)' }}>
+                            {user.grade_level ? `Grade ${user.grade_level}` : ''}
+                        </span>
+                    </header>
+                )}
 
                 {/* Guest banner */}
                 {isGuest && (
-                    <div style={{ background:'linear-gradient(90deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08))',borderBottom:'1px solid rgba(99,102,241,0.2)',padding:'9px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <User size={14} color="#f1f5f9" />
-                            <strong style={{ color: '#f1f5f9' }}>Guest Mode</strong> — explore the app. Sign up to save your progress and chats.
+                    <div style={{ background:'linear-gradient(90deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08))', borderBottom:'1px solid rgba(99,102,241,0.2)', padding:'9px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+                        <span style={{ fontSize:'0.85rem', color:'var(--text-secondary)', display:'flex', alignItems:'center', gap:8 }}>
+                            <User size={14} color="#f1f5f9"/>
+                            <strong style={{ color:'#f1f5f9' }}>Guest Mode</strong> — explore the app. Sign up to save your progress and chats.
                         </span>
-                        <button onClick={() => navigate('/register')} style={{ padding: '6px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#1e293b', color: '#f1f5f9', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#334155'} onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}>
+                        <button onClick={() => navigate('/register')} style={{ padding:'6px 16px', borderRadius:8, border:'1px solid var(--border)', background:'#1e293b', color:'#f1f5f9', cursor:'pointer', fontSize:'0.8rem', fontWeight:600, fontFamily:'inherit', whiteSpace:'nowrap', transition:'all 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#334155'} onMouseLeave={e => e.currentTarget.style.background='#1e293b'}>
                             Create Account
                         </button>
                     </div>
                 )}
 
-                <main style={{ flex:1,overflow:'hidden',display:'flex',flexDirection:'column' }}>
-                    {view==='chat'   && <StudentDashboard chatMessages={activeChat.messages} setChatMessages={updateMessages} createNewChat={createNewChat} />}
-                    {view==='bookAI' && <BookLibrary user={user} />}
-                    {view==='quiz'   && <QuizView />}
-                    {view==='plan'   && <StudyPlanView />}
-                    {view==='stats'  && <StatsView />}
-                    {view==='manage' && isTeacher && <TeacherDashboard />}
+                <main style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                    {view==='chat'   && <StudentDashboard chatMessages={activeChat.messages} setChatMessages={updateMessages} createNewChat={createNewChat}/>}
+                    {view==='bookAI' && <BookLibrary user={user}/>}
+                    {view==='quiz'   && <QuizView/>}
+                    {view==='plan'   && <StudyPlanView/>}
+                    {view==='stats'  && <StatsView/>}
+                    {view==='manage' && isTeacher && <TeacherDashboard/>}
                 </main>
             </div>
         </div>
