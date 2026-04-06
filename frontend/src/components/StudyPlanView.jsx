@@ -11,7 +11,7 @@ const MarkdownBlock = ({ text }) => {
         <div style={{ lineHeight:1.7 }}>
             {text.split('\n').map((line, i) => {
                 if (line.startsWith('### '))
-                    return <h3 key={i} style={{ fontSize:'1.05rem', color:'#818cf8', fontWeight:700, margin:'20px 0 10px' }}>{line.slice(4)}</h3>;
+                    return <h3 key={i} style={{ fontSize:'1.05rem', color:'var(--text-primary)', fontWeight:700, margin:'20px 0 10px' }}>{line.slice(4)}</h3>;
                 if (line.startsWith('## '))
                     return <h2 key={i} style={{ fontSize:'1.2rem', color:'var(--text-primary)', fontWeight:800, margin:'24px 0 12px', paddingBottom:8, borderBottom:'1px solid var(--border)' }}>{line.slice(3)}</h2>;
                 if (line.startsWith('# '))
@@ -133,7 +133,7 @@ const StudyPlanView = () => {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:28, flexWrap:'wrap', gap:12 }}>
                     <div>
                         <h1 style={{ display:'flex', alignItems:'center', gap:10, fontSize:'1.6rem', fontWeight:800, letterSpacing:'-0.03em', marginBottom:4 }}>
-                            <Calendar color="#818cf8" size={26}/>
+                            <Calendar color="var(--text-secondary)" size={26}/>
                             {planType === PLAN_TYPE_WEEKLY ? 'Weekly Study Plan' : 'Weakness Worksheet'}
                         </h1>
                         <p style={{ color:'var(--text-secondary)', fontSize:'0.88rem' }}>
@@ -149,7 +149,7 @@ const StudyPlanView = () => {
                         style={{ display:'flex', alignItems:'center', gap:6, padding:'10px 20px', borderRadius:24, fontSize:'0.85rem', whiteSpace:'nowrap', opacity:loading?0.7:1 }}
                     >
                         {loading
-                            ? <div className="spin" style={{ width:13,height:13,border:'2px solid rgba(255,255,255,0.4)',borderTopColor:'white',borderRadius:'50%' }}/>
+                            ? <div className="spin" style={{ width:13,height:13,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'white',borderRadius:'50%' }}/>
                             : <Sparkles size={14}/>}
                         {genLabel}
                     </button>
@@ -168,8 +168,8 @@ const StudyPlanView = () => {
                                 onClick={() => { setPlanType(t.id); setError(null); }}
                                 style={{
                                     padding:'8px 16px', borderRadius:9, border:'none',
-                                    background: planType===t.id ? 'rgba(99,102,241,0.18)' : 'transparent',
-                                    color: planType===t.id ? '#818cf8' : 'var(--text-muted)',
+                                    background: planType===t.id ? 'var(--bg-card-hover)' : 'transparent',
+                                    color: planType===t.id ? 'var(--text-primary)' : 'var(--text-muted)',
                                     fontWeight: planType===t.id ? 700 : 400,
                                     fontSize:'0.85rem', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s',
                                 }}
@@ -216,7 +216,7 @@ const StudyPlanView = () => {
                 {/* ── Loading ── */}
                 {loading && (
                     <div style={{ textAlign:'center', paddingTop:80 }}>
-                        <div className="spin" style={{ width:44,height:44,border:'3px solid rgba(99,102,241,0.2)',borderTopColor:'#6366f1',borderRadius:'50%',margin:'0 auto 18px' }}/>
+                        <div className="spin" style={{ width:44,height:44,border:'3px solid rgba(255,255,255,0.1)',borderTopColor:'var(--text-secondary)',borderRadius:'50%',margin:'0 auto 18px' }}/>
                         <p style={{ color:'var(--text-muted)' }}>
                             {planType === PLAN_TYPE_WEEKLY ? 'Analysing your library and building a custom schedule…' : 'Analysing your chat history and crafting a targeted worksheet…'}
                         </p>
@@ -248,19 +248,19 @@ const StudyPlanView = () => {
                                 {/* Day badge */}
                                 <div style={{ width:72, flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderRight:'1px solid var(--border)', paddingRight:24 }}>
                                     <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--text-muted)', fontWeight:700, marginBottom:4 }}>Day {idx+1}</span>
-                                    <strong style={{ fontSize:'1rem', color:'#818cf8' }}>{dayPlan.day}</strong>
+                                    <strong style={{ fontSize:'1rem', color:'var(--text-secondary)' }}>{dayPlan.day}</strong>
                                 </div>
                                 {/* Content */}
                                 <div style={{ flex:1 }}>
                                     <h3 style={{ fontSize:'1rem', fontWeight:700, color:'var(--text-primary)', marginBottom:6 }}>{dayPlan.topic}</h3>
                                     <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.82rem', marginBottom:14 }}>
-                                        <BookOpen size={13} color="#65a30d"/>
-                                        <span style={{ fontWeight:600, color:'#a3e635' }}>{dayPlan.book}</span>
+                                        <BookOpen size={13} color="var(--text-muted)"/>
+                                        <span style={{ fontWeight:600, color:'var(--text-secondary)' }}>{dayPlan.book}</span>
                                     </div>
                                     <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                                         {dayPlan.tasks?.map((task, tIdx) => (
                                             <div key={tIdx} style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
-                                                <div style={{ marginTop:3, color:'#4ade80', flexShrink:0 }}><CheckCircle size={13}/></div>
+                                                <div style={{ marginTop:3, color:'var(--text-muted)', flexShrink:0 }}><CheckCircle size={13}/></div>
                                                 <p style={{ fontSize:'0.84rem', color:'var(--text-secondary)', lineHeight:1.55 }}>{task}</p>
                                             </div>
                                         ))}

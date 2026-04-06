@@ -28,8 +28,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: data.error };
     };
 
-    const register = async (username, password, role, gradeLevel, dob) => {
-        const res  = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password, role, grade_level: gradeLevel, dob }) });
+    const register = async (username, password, role, gradeLevel, dob, teacherPassword) => {
+        const res  = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password, role, grade_level: gradeLevel, dob, teacher_password: teacherPassword }) });
         const data = await res.json();
         return res.ok ? { success: true } : { success: false, error: data.error };
     };

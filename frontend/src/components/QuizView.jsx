@@ -39,7 +39,7 @@ const QuizToolbar = ({ diff, setDiff, count, setCount, timer, setTimer, onStart,
             </div>
             {/* Timer toggle */}
             <button onClick={()=>setTimer(t=>!t)} title={timer?'Disable timer':'Enable 30s timer'}
-                style={{ display:'flex',alignItems:'center',gap:5,padding:'7px 12px',borderRadius:10,border:`1px solid ${timer?'rgba(99,102,241,0.5)':'var(--border)'}`,background:timer?'rgba(99,102,241,0.12)':'transparent',color:timer?'#818cf8':'var(--text-muted)',fontSize:'0.8rem',fontWeight:timer?700:400,cursor:'pointer',fontFamily:'inherit',transition:'all 0.18s',flexShrink:0 }}>
+                style={{ display:'flex',alignItems:'center',gap:5,padding:'7px 12px',borderRadius:10,border:`1px solid ${timer?'var(--border-bright)':'var(--border)'}`,background:timer?'var(--bg-card-hover)':'transparent',color:timer?'var(--text-primary)':'var(--text-muted)',fontSize:'0.8rem',fontWeight:timer?700:400,cursor:'pointer',fontFamily:'inherit',transition:'all 0.18s',flexShrink:0 }}>
                 <Clock size={12}/>{timer?'Timer ON':'Timer'}
             </button>
             {/* Start button */}
@@ -140,8 +140,8 @@ const QuizTab = ({ subject }) => {
 
             {/* Score */}
             {allRevealed && questions.length > 0 && (
-                <div style={{ padding:'16px 20px', borderRadius:12, marginBottom:24, display:'flex', alignItems:'center', gap:12, background:totalCorrect===questions.length?'rgba(34,197,94,0.08)':'rgba(251,191,36,0.08)', border:`1px solid ${totalCorrect===questions.length?'rgba(34,197,94,0.3)':'rgba(251,191,36,0.3)'}` }}>
-                    <CheckCircle size={26} color={totalCorrect===questions.length?'#4ade80':'#fbbf24'}/>
+                <div style={{ padding:'16px 20px', borderRadius:12, marginBottom:24, display:'flex', alignItems:'center', gap:12, background:'var(--bg-card)', border:`1px solid ${totalCorrect===questions.length?'var(--success)':'var(--warning)'}` }}>
+                    <CheckCircle size={26} color={totalCorrect===questions.length?'var(--success)':'var(--warning)'}/>
                     <div>
                         <p style={{ fontWeight:700, fontSize:'1.05rem' }}>Score: {totalCorrect}/{questions.length} ({Math.round(totalCorrect/questions.length*100)}%)</p>
                         <p style={{ fontSize:'0.8rem', color:'var(--text-secondary)', marginTop:2 }}>
@@ -158,15 +158,15 @@ const QuizTab = ({ subject }) => {
                         <span style={{ fontSize:'0.75rem', color:'var(--text-muted)' }}>Progress</span>
                         <span style={{ fontSize:'0.75rem', color:'#818cf8', fontWeight:600 }}>{Object.keys(revealed).length}/{questions.length} revealed</span>
                     </div>
-                    <div style={{ height:4, borderRadius:2, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${progress}%`, background:'linear-gradient(90deg,#6366f1,#a78bfa)', borderRadius:2, transition:'width 0.4s' }}/>
+                    <div style={{ height:4, borderRadius:2, background:'var(--bg-card)', overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${progress}%`, background:'var(--accent)', borderRadius:2, transition:'width 0.4s' }}/>
                     </div>
                 </div>
             )}
 
             {!started && !loading && (
                 <div className="glass" style={{ padding:'50px 40px', textAlign:'center' }}>
-                    <Brain size={48} style={{ margin:'0 auto 18px', color:'#818cf8', opacity:0.4, display:'block' }}/>
+                    <Brain size={48} style={{ margin:'0 auto 18px', color:'var(--text-muted)', opacity:0.4, display:'block' }}/>
                     <h2 style={{ fontWeight:700, marginBottom:10 }}>Ready to test yourself?</h2>
                     <p style={{ color:'var(--text-muted)', fontSize:'0.86rem', marginBottom:24, maxWidth:380, margin:'0 auto 24px' }}>Configure your quiz settings above, then hit Start.</p>
                 </div>
@@ -190,10 +190,10 @@ const QuizTab = ({ subject }) => {
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                         {q.options.map((opt,j) => {
                             const letter=opt[0], isSel=selected[i]===letter, isRev=!!revealed[i], isCorrect=letter===q.answer;
-                            let bg='rgba(255,255,255,0.03)',border='var(--border)',color='var(--text-primary)';
-                            if(isRev&&isCorrect){bg='rgba(34,197,94,0.1)';border='rgba(34,197,94,0.4)';color='#4ade80';}
-                            else if(isRev&&isSel&&!isCorrect){bg='rgba(239,68,68,0.1)';border='rgba(239,68,68,0.4)';color='#f87171';}
-                            else if(!isRev&&isSel){bg='rgba(99,102,241,0.12)';border='rgba(99,102,241,0.4)';color='#818cf8';}
+                            let bg='var(--bg-card)',border='var(--border)',color='var(--text-primary)';
+                            if(isRev&&isCorrect){bg='rgba(16,185,129,0.1)';border='var(--success)';color='var(--success)';}
+                            else if(isRev&&isSel&&!isCorrect){bg='rgba(239,68,68,0.1)';border='var(--danger)';color='var(--danger)';}
+                            else if(!isRev&&isSel){bg='var(--bg-card-hover)';border='var(--border-bright)';color='var(--text-primary)';}
                             return (
                                 <button key={j} onClick={()=>!isRev&&setSelected(p=>({...p,[i]:letter}))} style={{ display:'flex',alignItems:'center',gap:11,padding:'10px 13px',borderRadius:10,background:bg,border:`1px solid ${border}`,color,cursor:isRev?'default':'pointer',transition:'all 0.2s',textAlign:'left',fontFamily:'inherit',fontSize:'0.86rem' }}>
                                     <span style={{ width:22,height:22,borderRadius:6,background:'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:'0.72rem',flexShrink:0 }}>{letter}</span>
@@ -270,7 +270,7 @@ const FlashcardTab = ({ subject }) => {
             {error && <div style={{ padding:'14px 18px',borderRadius:12,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',color:'#f87171' }}>{error}</div>}
             {!loading && !error && cards.length === 0 && (
                 <div className="glass" style={{ padding:'50px 40px',textAlign:'center' }}>
-                    <Layers size={48} style={{ margin:'0 auto 18px',color:'#818cf8',opacity:0.35,display:'block' }}/>
+                    <Layers size={48} style={{ margin:'0 auto 18px',color:'var(--text-muted)',opacity:0.35,display:'block' }}/>
                     <h2 style={{ fontWeight:700,marginBottom:10 }}>Flashcard mode</h2>
                     <p style={{ color:'var(--text-muted)',fontSize:'0.86rem',marginBottom:24 }}>6 term/definition cards generated from your library. Tap to flip!</p>
                     <button onClick={generate} className="btn-gradient" style={{ padding:'12px 32px',fontSize:'0.92rem',display:'inline-flex',alignItems:'center',gap:8 }}><Layers size={16}/>Generate Cards</button>
@@ -289,8 +289,8 @@ const FlashcardTab = ({ subject }) => {
                                 <p style={{ fontSize:'1.3rem',fontWeight:800,letterSpacing:'-0.02em',lineHeight:1.3,color:'var(--text-primary)' }}>{cards[current]?.front}</p>
                                 <span style={{ marginTop:16,fontSize:'0.72rem',color:'var(--text-muted)' }}>Tap to reveal →</span>
                             </div>
-                            <div className="glass" style={{ position:'absolute',inset:0,borderRadius:18,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'28px 32px',backfaceVisibility:'hidden',transform:'rotateY(180deg)',textAlign:'center',background:'rgba(99,102,241,0.07)',borderColor:'rgba(99,102,241,0.25)' }}>
-                                <span style={{ fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',color:'#818cf8',marginBottom:14 }}>DEFINITION</span>
+                            <div className="glass" style={{ position:'absolute',inset:0,borderRadius:18,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'28px 32px',backfaceVisibility:'hidden',transform:'rotateY(180deg)',textAlign:'center',background:'var(--bg-card-hover)',borderColor:'var(--border)' }}>
+                                <span style={{ fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-secondary)',marginBottom:14 }}>DEFINITION</span>
                                 <p style={{ fontSize:'0.96rem',lineHeight:1.7,color:'var(--text-primary)' }}>{cards[current]?.back}</p>
                             </div>
                         </div>
@@ -337,13 +337,13 @@ const QuizView = () => {
         <div style={{ height:'100%',overflowY:'auto' }}>
             <div style={{ maxWidth:760,margin:'0 auto',padding:'32px 28px' }}>
                 <h1 style={{ fontSize:'1.55rem',fontWeight:800,letterSpacing:'-0.03em',marginBottom:4,display:'flex',alignItems:'center',gap:10 }}>
-                    <Brain size={22} color="#818cf8"/> Study<span className="gradient-text">Mode</span>
+                    <Brain size={22} color="var(--text-secondary)"/> Study<span style={{ color: 'var(--accent)' }}>Mode</span>
                 </h1>
 
                 <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:28,flexWrap:'wrap',gap:10 }}>
                     <div style={{ display:'flex',gap:3,background:'rgba(255,255,255,0.04)',border:'1px solid var(--border)',borderRadius:12,padding:4,width:'fit-content' }}>
                         {[{id:'quiz',label:'🧪 Quiz'},{id:'flash',label:'🃏 Flashcards'}].map(t=>(
-                            <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:'8px 20px',borderRadius:9,border:'none',background:tab===t.id?'rgba(99,102,241,0.18)':'transparent',color:tab===t.id?'#818cf8':'var(--text-muted)',fontWeight:tab===t.id?700:400,fontSize:'0.86rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s' }}>
+                            <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:'8px 20px',borderRadius:9,border:'none',background:tab===t.id?'var(--bg-card-hover)':'transparent',color:tab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:tab===t.id?700:400,fontSize:'0.86rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s' }}>
                                 {t.label}
                             </button>
                         ))}

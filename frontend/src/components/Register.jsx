@@ -10,7 +10,7 @@ const GRADE_OPTIONS = [
 ];
 
 const Register = () => {
-    const [form, setForm] = useState({ username: '', password: '', role: 'Student', grade_level: '8', dob: '' });
+    const [form, setForm] = useState({ username: '', password: '', role: 'Student', grade_level: '8', dob: '', teacher_password: '' });
     const [showPw, setShowPw] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ const Register = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(''); setLoading(true);
-        const result = await register(form.username, form.password, form.role, form.role === 'Student' ? form.grade_level : null, form.dob || null);
+        const result = await register(form.username, form.password, form.role, form.role === 'Student' ? form.grade_level : null, form.dob || null, form.role === 'Teacher' ? form.teacher_password : null);
         if (result.success) { setSuccess(true); setTimeout(() => navigate('/login'), 1500); }
         else { setError(result.error || 'Registration failed'); setLoading(false); }
     };
@@ -97,6 +97,13 @@ const Register = () => {
                                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Date of Birth</label>
                                 <input className="input-field" type="date" value={form.dob} onChange={e=>set('dob',e.target.value)} style={{ padding: '11px 14px', colorScheme: 'dark' }}/>
                             </div>
+                        </div>
+                    )}
+                    
+                    {form.role === 'Teacher' && (
+                        <div>
+                            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Teacher Access Code</label>
+                            <input className="input-field" type="password" value={form.teacher_password} onChange={e=>set('teacher_password',e.target.value)} placeholder="Required for Teacher accounts" required style={{ padding: '12px 16px' }}/>
                         </div>
                     )}
 

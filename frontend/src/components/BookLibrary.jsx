@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock, X } from 'lucide-react';
 
 const SUBJECT_COLORS = {
-    Mathematics:        { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', border: 'rgba(251,191,36,0.25)' },
-    Physics:            { bg: 'rgba(96,165,250,0.1)',  color: '#60a5fa', border: 'rgba(96,165,250,0.25)'  },
-    Chemistry:          { bg: 'rgba(52,211,153,0.1)',  color: '#34d399', border: 'rgba(52,211,153,0.25)'  },
-    Biology:            { bg: 'rgba(110,231,183,0.1)', color: '#6ee7b7', border: 'rgba(110,231,183,0.25)' },
-    History:            { bg: 'rgba(249,115,22,0.1)',  color: '#fb923c', border: 'rgba(249,115,22,0.25)'  },
-    English:            { bg: 'rgba(232,121,249,0.1)', color: '#e879f9', border: 'rgba(232,121,249,0.25)' },
-    Turkish:            { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', border: 'rgba(239,68,68,0.25)' },
-    'Computer Science': { bg: 'rgba(99,102,241,0.1)',  color: '#818cf8', border: 'rgba(99,102,241,0.25)'  },
-    General:            { bg: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: 'rgba(148,163,184,0.2)'  },
+    Mathematics:        { bg: 'transparent',  color: '#fbbf24', border: 'var(--border)' },
+    Physics:            { bg: 'transparent',  color: '#60a5fa', border: 'var(--border)'  },
+    Chemistry:          { bg: 'transparent',  color: '#34d399', border: 'var(--border)'  },
+    Biology:            { bg: 'transparent', color: '#6ee7b7', border: 'var(--border)' },
+    History:            { bg: 'transparent',  color: '#fb923c', border: 'var(--border)'  },
+    English:            { bg: 'transparent', color: '#e879f9', border: 'var(--border)' },
+    Turkish:            { bg: 'transparent',   color: '#ef4444', border: 'var(--border)' },
+    'Computer Science': { bg: 'transparent',  color: '#818cf8', border: 'var(--border)'  },
+    General:            { bg: 'transparent', color: '#94a3b8', border: 'var(--border)'  },
 };
 
 // ─── Selection Popup ──────────────────────────────────────────────────────────
@@ -20,24 +20,26 @@ const SelectionPopup = ({ position, onAskAI }) => {
         <div data-sel-popup="1" style={{
             position: 'fixed', top: position.y - 44, left: position.x,
             transform: 'translateX(-50%)',
-            background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+            background: '#1e293b',
             borderRadius: 10, padding: '6px 14px',
             display: 'flex', alignItems: 'center', gap: 6,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999,
             cursor: 'pointer', userSelect: 'none',
-            border: '1px solid rgba(255,255,255,0.15)',
+            border: '1px solid var(--border)',
             animation: 'selPopIn 0.15s ease',
         }} onClick={onAskAI}>
             <Sparkles size={12} color="white" />
             <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>Ask AI</span>
             <div style={{ position:'absolute', bottom:-6, left:'50%', transform:'translateX(-50%)', width:0, height:0,
-                borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid #4f46e5' }} />
+                borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid #1e293b' }} />
         </div>
     );
 };
 
 // ─── Mini AI Chat ──────────────────────────────────────────────────────────────
-const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed }) => {
+import AdvancedPdfReader from './AdvancedPdfReader';
+
+const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed, onHighlights }) => {
     const [msgs,    setMsgs]    = useState([{ role:'assistant', content:`I'm ready! Ask me anything about "${bookName}".` }]);
     const [input,   setInput]   = useState('');
     const [loading, setLoading] = useState(false);
@@ -68,6 +70,12 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
             const data = await res.json();
             if (res.ok) {
                 setMsgs(p => [...p, { role:'assistant', content: data.response, page: data.page || null }]);
+                if (data.highlights && data.highlights.length > 0) {
+                    onHighlights?.(data.highlights);
+                    if (data.highlights[0].page) {
+                        onJumpToPage?.(data.highlights[0].page);
+                    }
+                }
             } else {
                 setMsgs(p => [...p, { role:'assistant', content: 'Error: '+data.error }]);
             }
@@ -76,43 +84,53 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
     }, [input, loading, bookId]);
 
     return (
-        <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-            <div style={{ flex:1, overflowY:'auto', padding:'12px', display:'flex', flexDirection:'column', gap:9 }}>
+        <div style={{ display:'flex', flexDirection:'column', height:'100%', background: '#0b0f19' }}>
+            <div style={{ flex:1, overflowY:'auto', padding:'20px 16px', display:'flex', flexDirection:'column', gap:12 }}>
                 {msgs.map((m,i) => (
                     <div key={i}>
                         <div style={{ display:'flex', justifyContent: m.role==='user'?'flex-end':'flex-start' }}>
-                            <div style={{ maxWidth:'88%', padding:'9px 13px', borderRadius: m.role==='user'?'13px 3px 13px 13px':'3px 13px 13px 13px', background: m.role==='user'?'rgba(79,70,229,0.18)':'rgba(255,255,255,0.04)', border:`1px solid ${m.role==='user'?'rgba(99,102,241,0.28)':'var(--border)'}`, fontSize:'0.82rem', lineHeight:1.7, color:'var(--text-primary)' }}>
+                            <div style={{ 
+                                maxWidth: '90%', padding: '10px 14px', 
+                                borderRadius: m.role==='user' ? '18px 18px 2px 18px' : '2px 18px 18px 18px', 
+                                background: m.role==='user' ? '#1e293b' : 'transparent', 
+                                border: m.role==='assistant' ? '1px solid var(--border)' : 'none', 
+                                fontSize: '0.85rem', lineHeight: 1.6, color: '#f8fafc' 
+                            }}>
                                 {m.role === 'assistant'
                                     ? m.content.split('\n').map((line, li) => {
                                         if (line.startsWith('- ') || line.startsWith('* '))
-                                            return <li key={li} style={{ marginLeft:16, marginBottom:3 }} dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>') }}/>;
-                                        if (line.trim() === '') return <div key={li} style={{ height:6 }}/>;
-                                        return <p key={li} style={{ marginBottom:4 }} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>') }}/>;
+                                            return <li key={li} style={{ marginLeft:16, marginBottom:4, color: 'var(--text-secondary)' }} dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.*?)\*\*/g,'<strong style="color:white">$1</strong>') }}/>;
+                                        if (line.trim() === '') return <div key={li} style={{ height:8 }}/>;
+                                        return <p key={li} style={{ marginBottom:6, color: 'var(--text-secondary)' }} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g,'<strong style="color:white">$1</strong>') }}/>;
                                     })
                                     : <span style={{ whiteSpace:'pre-wrap' }}>{m.content}</span>
                                 }
                             </div>
                         </div>
                         {m.role === 'assistant' && m.page && (
-                            <div style={{ display:'flex', justifyContent:'flex-start', marginTop:5, paddingLeft:2 }}>
+                            <div style={{ display:'flex', justifyContent:'flex-start', marginTop:8, paddingLeft:4 }}>
                                 <button
                                     onClick={() => onJumpToPage?.(m.page)}
-                                    style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.10)', color:'#818cf8', fontSize:'0.74rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit', transition:'all 0.18s' }}
-                                    onMouseEnter={e=>e.currentTarget.style.background='rgba(99,102,241,0.22)'}
-                                    onMouseLeave={e=>e.currentTarget.style.background='rgba(99,102,241,0.10)'}
+                                    style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20, border:'1px solid var(--border)', background:'rgba(255,255,255,0.05)', color:'var(--text-secondary)', fontSize:'0.75rem', fontWeight:600, cursor:'pointer', fontFamily:'inherit', transition:'all 0.1s' }}
+                                    onMouseEnter={e=> { e.currentTarget.style.background='rgba(255,255,255,0.1)'; e.currentTarget.style.color='#f1f5f9'; }}
+                                    onMouseLeave={e=> { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.color='var(--text-secondary)'; }}
                                 >
-                                    <FileText size={11}/>📄 Jump to page {m.page}
+                                    <FileText size={12}/> Jump to page {m.page}
                                 </button>
                             </div>
                         )}
                     </div>
                 ))}
-                {loading && <div className="dot-flashing" style={{ display:'flex', gap:4, padding:'8px 13px' }}><span/><span/><span/></div>}
+                {loading && <div className="dot-flashing" style={{ display:'flex', gap:6, padding:'12px 14px' }}><span/><span/><span/></div>}
                 <div ref={bottomRef}/>
             </div>
-            <div style={{ padding:'10px 12px', borderTop:'1px solid var(--border)', display:'flex', gap:8 }}>
-                <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Ask about this book…" style={{ flex:1, background:'transparent', border:'none', outline:'none', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'inherit' }}/>
-                <button onClick={()=>sendMsg()} disabled={!input.trim()||loading} className="btn-gradient" style={{ padding:'6px 12px', fontSize:'0.78rem', borderRadius:8, display:'flex', alignItems:'center', gap:4 }}><Send size={12}/></button>
+            
+            {/* Input Bar */}
+            <div style={{ padding:'12px 16px 20px', background: '#0b0f19' }}>
+                <form onSubmit={(e) => { e.preventDefault(); sendMsg(); }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#1e293b', borderRadius: 24, padding: '8px 10px 8px 16px', border: '1px solid var(--border)' }}>
+                    <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask about this book…" style={{ flex:1, background:'transparent', border:'none', outline:'none', color:'#f8fafc', fontSize:'0.85rem', fontFamily:'inherit' }}/>
+                    <button type="submit" disabled={!input.trim()||loading} style={{ width: 34, height: 34, borderRadius: '50%', background: input.trim() ? '#f8fafc' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', flexShrink: 0 }}><Send size={14} style={{ marginLeft: 2 }}/></button>
+                </form>
             </div>
         </div>
     );
@@ -130,22 +148,25 @@ const NotesPanel = ({ bookId }) => {
     };
     const del = id => { const n=notes.filter(n=>n.id!==id); setNotes(n); localStorage.setItem(key, JSON.stringify(n)); };
     return (
-        <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-            <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', gap:8 }}>
-                <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a note…" rows={2} style={{ flex:1, background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)', padding:'7px 10px', fontSize:'0.8rem', fontFamily:'inherit', resize:'none', outline:'none' }}/>
-                <button onClick={save} className="btn-gradient" style={{ padding:'6px 12px', borderRadius:8, fontSize:'0.78rem', alignSelf:'flex-end' }}>Save</button>
+        <div style={{ display:'flex', flexDirection:'column', height:'100%', background: '#0b0f19' }}>
+            <div style={{ padding:'12px 16px', display:'flex', gap:8 }}>
+                <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a note…" rows={2} style={{ flex:1, background:'rgba(255,255,255,0.02)', border:'1px solid var(--border)', borderRadius:12, color:'#f8fafc', padding:'10px 12px', fontSize:'0.85rem', fontFamily:'inherit', resize:'none', outline:'none', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)' }}/>
+                <button onClick={save} style={{ background: '#1e293b', color: 'white', border: '1px solid var(--border)', cursor: 'pointer', padding:'0 14px', borderRadius:12, fontSize:'0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', alignSelf: 'stretch', transition: 'all 0.2s' }}
+                onMouseEnter={e=>e.currentTarget.style.background='#334155'} onMouseLeave={e=>e.currentTarget.style.background='#1e293b'}>Save</button>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:7 }}>
                 {notes.length === 0 && <p style={{ color:'var(--text-muted)', fontSize:'0.8rem', textAlign:'center', marginTop:16 }}>No notes yet. Start typing above!</p>}
                 {notes.map(n => (
-                    <div key={n.id} style={{ padding:'9px 11px', borderRadius:9, background:'rgba(251,191,36,0.06)', border:'1px solid rgba(251,191,36,0.15)' }}>
-                        <p style={{ fontSize:'0.8rem', color:'var(--text-primary)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{n.text}</p>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginTop:5 }}>
-                            <span style={{ fontSize:'0.67rem', color:'var(--text-muted)' }}>{n.ts}</span>
-                            <button onClick={()=>del(n.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)' }}><Trash2 size={11}/></button>
+                    <div key={n.id} className="animate-fade-up" style={{ background:'transparent', border: '1px solid var(--border)', borderRadius:12, padding:'14px', marginBottom:12, position:'relative' }}>
+                        <p style={{ color:'#f8fafc', fontSize:'0.85rem', whiteSpace:'pre-wrap', lineHeight:1.5, marginBottom:10 }}>{n.text}</p>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                            <span style={{ fontSize:'0.7rem', color:'var(--text-muted)' }}>{n.ts}</span>
+                            <button onClick={()=>del(n.id)} style={{ background:'transparent', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:4, display:'flex', alignItems:'center', borderRadius:4, transition: 'all 0.2s' }}
+                            onMouseEnter={e=> { e.currentTarget.style.color='#ef4444'; e.currentTarget.style.background='rgba(239,68,68,0.1)'; }} onMouseLeave={e=> { e.currentTarget.style.color='var(--text-muted)'; e.currentTarget.style.background='transparent'; }}><Trash2 size={13}/></button>
                         </div>
                     </div>
                 ))}
+                {notes.length===0 && <div style={{ textAlign:'center', marginTop:40, color:'var(--text-muted)', fontSize:'0.85rem' }}>No notes for this book yet.</div>}
             </div>
         </div>
     );
@@ -251,7 +272,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
     }, [bookMeta.id]);
 
     const jumpToPage = useCallback((n) => {
-        if (!pdfUrl || !n) return;
+        if (!n) return;
         setPageNum(n);
         setIframeSrc(`${pdfUrl}#page=${n}&toolbar=1&navpanes=0&scrollbar=1&_t=${Date.now()}`);
     }, [pdfUrl]);
@@ -523,7 +544,7 @@ const BookLibrary = ({ user }) => {
             <div style={{ maxWidth:960, margin:'0 auto', padding:'32px 28px' }}>
                 <div style={{ marginBottom:24 }}>
                     <h1 style={{ fontSize:'1.6rem', fontWeight:800, letterSpacing:'-0.03em', marginBottom:4 }}>
-                        📚 Book<span className="gradient-text">AI</span>
+                        📚 Book<span style={{ color: '#818cf8' }}>AI</span>
                     </h1>
                     <p style={{ color:'var(--text-secondary)', fontSize:'0.88rem' }}>
                         {gradeLevel
