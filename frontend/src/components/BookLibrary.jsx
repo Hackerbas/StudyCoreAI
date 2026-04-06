@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock } from 'lucide-react';
+import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock, X } from 'lucide-react';
 
 const SUBJECT_COLORS = {
     Mathematics:        { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', border: 'rgba(251,191,36,0.25)' },
@@ -13,7 +13,7 @@ const SUBJECT_COLORS = {
     General:            { bg: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: 'rgba(148,163,184,0.2)'  },
 };
 
-// ─── Selection Popup (inside right panel only) ────────────────────────────────
+// ─── Selection Popup ──────────────────────────────────────────────────────────
 const SelectionPopup = ({ position, onAskAI }) => {
     if (!position) return null;
     return (
@@ -46,13 +46,11 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
-    // Accept pre-filled text from selection popup
     useEffect(() => {
         if (prefilledInput) {
             setInput(prefilledInput);
             inputRef.current?.focus();
             onPrefilledConsumed?.();
-            // auto-send after a tiny tick so state is committed
             setTimeout(() => sendMsg(prefilledInput), 80);
         }
     }, [prefilledInput]); // eslint-disable-line
@@ -95,7 +93,6 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
                                 }
                             </div>
                         </div>
-                        {/* Page jump button */}
                         {m.role === 'assistant' && m.page && (
                             <div style={{ display:'flex', justifyContent:'flex-start', marginTop:5, paddingLeft:2 }}>
                                 <button
@@ -139,7 +136,7 @@ const NotesPanel = ({ bookId }) => {
                 <button onClick={save} className="btn-gradient" style={{ padding:'6px 12px', borderRadius:8, fontSize:'0.78rem', alignSelf:'flex-end' }}>Save</button>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:7 }}>
-                {notes.length === 0 && <p style={{ color:'var(--text-muted)', fontSize:'0.8rem', textAlign:'center', marginTop:16 }}>No notes yet.</p>}
+                {notes.length === 0 && <p style={{ color:'var(--text-muted)', fontSize:'0.8rem', textAlign:'center', marginTop:16 }}>No notes yet. Start typing above!</p>}
                 {notes.map(n => (
                     <div key={n.id} style={{ padding:'9px 11px', borderRadius:9, background:'rgba(251,191,36,0.06)', border:'1px solid rgba(251,191,36,0.15)' }}>
                         <p style={{ fontSize:'0.8rem', color:'var(--text-primary)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{n.text}</p>
@@ -154,28 +151,29 @@ const NotesPanel = ({ bookId }) => {
     );
 };
 
-// ─── Book Reader (PDF viewer) ─────────────────────────────────────────────────
-const BookReader = ({ bookMeta, onBack, user }) => {
+// ─── Book Reader ──────────────────────────────────────────────────────────────
+// initialPanel: null | 'chat' | 'notes'
+// initialHighlight: boolean
+const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) => {
     const [pdfUrl,    setPdfUrl]    = useState(null);
-    const [iframeSrc, setIframeSrc] = useState(null); // ← React-controlled src
+    const [iframeSrc, setIframeSrc] = useState(null);
     const [loading,   setLoading]   = useState(true);
     const [error,     setError]     = useState(null);
-    const [tab,       setTab]       = useState('chat');
+    const [tab,       setTab]       = useState(initialPanel === 'notes' ? 'notes' : 'chat');
     const [pageNum,   setPageNum]   = useState(null);
+    const [panelOpen, setPanelOpen] = useState(!!initialPanel);
     const sc = SUBJECT_COLORS[bookMeta.subject] || SUBJECT_COLORS.General;
 
-    // Selection-to-ask state (works in the right panel)
     const [selPopup,     setSelPopup]     = useState(null);
     const [prefilledMsg, setPrefilledMsg] = useState('');
     const rightPanelRef = useRef(null);
     const userId = user?.id || 'anon';
 
-    // ─── Reading Progress Tracking ───
+    // ─── Timer ───
     const progKey = `sc_prog_${userId}_${bookMeta.id}`;
     const [timeSpent, setTimeSpent] = useState(() => {
         try { return JSON.parse(localStorage.getItem(progKey))?.timeSpent || 0; } catch { return 0; }
     });
-    
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeSpent(t => {
@@ -186,72 +184,58 @@ const BookReader = ({ bookMeta, onBack, user }) => {
         }, 1000);
         return () => clearInterval(timer);
     }, [progKey]);
+    const formatTime = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
 
-    const formatTime = (secs) => {
-        if (secs < 60) return `${secs}s`;
-        const m = Math.floor(secs / 60);
-        return `${m}m ${secs % 60}s`;
-    };
+    // ─── Highlight / Draw overlay ───
+    // Canvas sits ABOVE the iframe but only captures events in drawMode
+    const [drawMode, setDrawMode] = useState(!!initialHighlight);
+    const canvasRef  = useRef(null);
+    const ctxRef     = useRef(null);
+    const isDrawing  = useRef(false);
 
-    // ─── Canvas Draw Overlay ───
-    const [drawMode, setDrawMode] = useState(false);
-    const canvasRef = useRef(null);
-    const ctxRef = useRef(null);
-    const isDrawing = useRef(false);
+    const initCanvas = useCallback(() => {
+        const cvs = canvasRef.current;
+        if (!cvs) return;
+        cvs.width  = cvs.offsetWidth;
+        cvs.height = cvs.offsetHeight;
+        const ctx  = cvs.getContext('2d');
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+        ctx.globalAlpha = 0.35;  // More transparent so text stays readable
+        ctx.strokeStyle = '#fbbf24'; // Amber yellow
+        ctx.lineWidth   = 16;
+        ctx.globalCompositeOperation = 'multiply'; // Blend with white PDF bg
+        ctxRef.current  = ctx;
+    }, []);
 
     useEffect(() => {
-        if (!canvasRef.current) return;
-        const cvs = canvasRef.current;
-        // Make canvas internal resolution match display size exactly
-        cvs.width = cvs.offsetWidth;
-        cvs.height = cvs.offsetHeight;
-        
-        const ctx = cvs.getContext('2d');
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)'; // Yellow highlighter style
-        ctx.lineWidth = 14;
-        ctxRef.current = ctx;
-        
-        // Handle window resize so canvas doesn't warp
-        const resize = () => {
-            // Save state, resize, restore (crude but works for now)
-            cvs.width = cvs.offsetWidth;
-            cvs.height = cvs.offsetHeight;
-            const context = cvs.getContext('2d');
-            context.lineCap = 'round';
-            context.lineJoin = 'round';
-            context.strokeStyle = 'rgba(250, 204, 21, 0.5)';
-            context.lineWidth = 14;
-            ctxRef.current = context;
-        };
-        window.addEventListener('resize', resize);
-        return () => window.removeEventListener('resize', resize);
-    }, [drawMode]); // Re-init when mode toggles if needed
+        if (!drawMode) return;
+        initCanvas();
+        window.addEventListener('resize', initCanvas);
+        return () => window.removeEventListener('resize', initCanvas);
+    }, [drawMode, initCanvas]);
 
-    const startDraw = (e) => {
+    const startDraw = e => {
         if (!drawMode || !ctxRef.current) return;
         isDrawing.current = true;
-        const rect = canvasRef.current.getBoundingClientRect();
+        const r = canvasRef.current.getBoundingClientRect();
         ctxRef.current.beginPath();
-        ctxRef.current.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        ctxRef.current.moveTo(e.clientX - r.left, e.clientY - r.top);
     };
-    const draw = (e) => {
-        if (!isDrawing.current || !drawMode || !ctxRef.current) return;
-        const rect = canvasRef.current.getBoundingClientRect();
-        ctxRef.current.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    const draw = e => {
+        if (!isDrawing.current || !ctxRef.current) return;
+        const r = canvasRef.current.getBoundingClientRect();
+        ctxRef.current.lineTo(e.clientX - r.left, e.clientY - r.top);
         ctxRef.current.stroke();
     };
-    const stopDraw = () => {
-        if (!drawMode) return;
-        isDrawing.current = false;
-        ctxRef.current?.closePath();
-    };
+    const stopDraw = () => { isDrawing.current = false; ctxRef.current?.closePath(); };
     const clearDraw = () => {
-        if (!canvasRef.current || !ctxRef.current) return;
-        ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        if (canvasRef.current && ctxRef.current) {
+            ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
     };
 
+    // ─── Load PDF ───
     useEffect(() => {
         (async () => {
             try {
@@ -260,183 +244,236 @@ const BookReader = ({ bookMeta, onBack, user }) => {
                 if (res.ok) {
                     setPdfUrl(data.url);
                     setIframeSrc(`${data.url}#toolbar=1&navpanes=0&scrollbar=1`);
-                } else {
-                    setError(data.error || 'Could not load PDF.');
-                }
+                } else { setError(data.error || 'Could not load PDF.'); }
             } catch { setError('Network error loading PDF.'); }
             finally { setLoading(false); }
         })();
     }, [bookMeta.id]);
 
-    // Jump to page — uses React state so iframe re-renders cleanly
     const jumpToPage = useCallback((n) => {
         if (!pdfUrl || !n) return;
         setPageNum(n);
-        // Append a cache-bust to force the iframe to re-load to the new page
         setIframeSrc(`${pdfUrl}#page=${n}&toolbar=1&navpanes=0&scrollbar=1&_t=${Date.now()}`);
     }, [pdfUrl]);
 
-    // Selection popup in the right panel
+    // ─── Selection → Ask AI ───
     const handleRightPanelMouseUp = useCallback(() => {
-        const sel = window.getSelection();
+        const sel  = window.getSelection();
         const text = sel?.toString().trim();
         if (text && text.length > 3) {
             const rect = sel.getRangeAt(0).getBoundingClientRect();
             setSelPopup({ x: rect.left + rect.width / 2, y: rect.top, text });
-        } else {
-            setSelPopup(null);
-        }
+        } else { setSelPopup(null); }
     }, []);
-
     const handleSelAskAI = () => {
         if (!selPopup) return;
-        const selected = selPopup.text;
         setSelPopup(null);
         window.getSelection()?.removeAllRanges();
         setTab('chat');
-        setPrefilledMsg(selected);
+        setPanelOpen(true);
+        setPrefilledMsg(selPopup.text);
     };
-
     useEffect(() => {
-        const hide = (e) => { if (!e.target.closest('[data-sel-popup]')) setSelPopup(null); };
+        const hide = e => { if (!e.target.closest('[data-sel-popup]')) setSelPopup(null); };
         document.addEventListener('mousedown', hide);
         return () => document.removeEventListener('mousedown', hide);
     }, []);
 
+    const openPanel = t => { setTab(t); setPanelOpen(true); };
+
     return (
-        <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+        <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
             {selPopup && <SelectionPopup position={selPopup} onAskAI={handleSelAskAI} />}
 
-            {/* Topbar */}
-            <div style={{ padding:'10px 20px', borderBottom:'1px solid var(--border)', background:'rgba(6,11,24,0.9)', display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
-                <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-card)', color:'var(--text-secondary)', cursor:'pointer', fontSize:'0.8rem', fontWeight:600, fontFamily:'inherit', transition:'all 0.2s', whiteSpace:'nowrap' }}
-                onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-secondary)'}
-                ><ArrowLeft size={13}/> Back</button>
+            {/* ── Topbar ── */}
+            <div style={{
+                padding:'7px 14px', borderBottom:'1px solid var(--border)',
+                background:'rgba(6,11,24,0.97)', backdropFilter:'blur(14px)',
+                display:'flex', alignItems:'center', gap:10, flexShrink:0,
+            }}>
+                <button onClick={onBack} style={{
+                    display:'flex', alignItems:'center', gap:5,
+                    padding:'5px 10px', borderRadius:8,
+                    border:'1px solid var(--border)', background:'transparent',
+                    color:'var(--text-secondary)', cursor:'pointer',
+                    fontSize:'0.76rem', fontWeight:600, fontFamily:'inherit',
+                    transition:'all 0.18s', whiteSpace:'nowrap',
+                }}
+                onMouseEnter={e=>e.currentTarget.style.color='white'}
+                onMouseLeave={e=>e.currentTarget.style.color='var(--text-secondary)'}
+                ><ArrowLeft size={12}/> Back</button>
+
                 <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ fontWeight:700, fontSize:'0.9rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {bookMeta.filename.replace('.pdf','').replace(/_/g,' ')}
+                    <p style={{ fontWeight:700, fontSize:'0.86rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3, margin:0 }}>
+                        {bookMeta.title || bookMeta.filename.replace('.pdf','').replace(/_/g,' ')}
                     </p>
-                    <span style={{ fontSize:'0.7rem', color:sc.color, fontWeight:600 }}>{bookMeta.subject||'General'}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ fontSize:'0.67rem', color:sc.color, fontWeight:600 }}>{bookMeta.subject||'General'}</span>
+                        {pageNum && <span style={{ fontSize:'0.67rem', color:'var(--text-muted)' }}>· p.{pageNum}</span>}
+                    </div>
                 </div>
-                {pageNum && (
-                    <span style={{ fontSize:'0.72rem', color:'#818cf8', background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.3)', padding:'4px 10px', borderRadius:8 }}>
-                        Page {pageNum}
-                    </span>
+
+                {/* Timer */}
+                <div style={{ display:'flex', alignItems:'center', gap:4, padding:'3px 9px', background:'rgba(255,255,255,0.04)', borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', flexShrink:0 }}>
+                    <Clock size={10} color="var(--text-muted)"/>
+                    <span style={{ fontSize:'0.7rem', fontWeight:600, color:'var(--text-secondary)' }}>{formatTime(timeSpent)}</span>
+                </div>
+
+                {/* Highlight toggle */}
+                <button onClick={() => setDrawMode(d => !d)} style={{
+                    display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
+                    borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                    fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
+                    border: drawMode ? '1px solid #ca8a04' : '1px solid var(--border)',
+                    background: drawMode ? 'rgba(234,179,8,0.15)' : 'transparent',
+                    color: drawMode ? '#fbbf24' : 'var(--text-muted)',
+                }}>
+                    <PenTool size={12}/>{drawMode ? 'Highlighting' : 'Highlight'}
+                </button>
+
+                {/* Erase (only in draw mode) */}
+                {drawMode && (
+                    <button onClick={clearDraw} style={{
+                        display:'flex', alignItems:'center', gap:4, padding:'5px 9px',
+                        borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                        fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
+                        border:'1px solid rgba(239,68,68,0.35)',
+                        background:'rgba(239,68,68,0.08)', color:'#ef4444',
+                    }}>
+                        <Eraser size={11}/> Clear
+                    </button>
                 )}
-                {/* Reading Progress */}
-                <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', background:'rgba(255,255,255,0.05)', borderRadius:20, border:'1px solid rgba(255,255,255,0.1)' }}>
-                    <Clock size={12} color="var(--text-muted)"/>
-                    <span style={{ fontSize:'0.75rem', fontWeight:600, color:'var(--text-secondary)' }}>{formatTime(timeSpent)}</span>
-                </div>
-                <span style={{ fontSize:'0.72rem', color:'var(--text-muted)', background:'rgba(255,255,255,0.04)', border:'1px solid var(--border)', padding:'4px 10px', borderRadius:8 }}>
-                    Gr{bookMeta.min_grade}+
-                </span>
+
+                {/* Notes toggle */}
+                <button onClick={() => panelOpen && tab==='notes' ? setPanelOpen(false) : openPanel('notes')} style={{
+                    display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
+                    borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                    fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
+                    border: (panelOpen && tab==='notes') ? '1px solid rgba(251,191,36,0.45)' : '1px solid var(--border)',
+                    background: (panelOpen && tab==='notes') ? 'rgba(251,191,36,0.10)' : 'transparent',
+                    color: (panelOpen && tab==='notes') ? '#fbbf24' : 'var(--text-muted)',
+                }}>
+                    <StickyNote size={12}/> Notes
+                </button>
+
+                {/* AI Chat toggle */}
+                <button onClick={() => panelOpen && tab==='chat' ? setPanelOpen(false) : openPanel('chat')} style={{
+                    display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
+                    borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                    fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
+                    border: (panelOpen && tab==='chat') ? '1px solid rgba(99,102,241,0.5)' : '1px solid var(--border)',
+                    background: (panelOpen && tab==='chat') ? 'rgba(99,102,241,0.12)' : 'transparent',
+                    color: (panelOpen && tab==='chat') ? '#818cf8' : 'var(--text-muted)',
+                }}>
+                    <Bot size={12}/> Ask AI
+                </button>
             </div>
 
-            {/* Split: PDF viewer + right panel */}
+            {/* ── Content ── */}
             <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
 
-                {/* PDF viewer */}
-                <div style={{ flex:1, background:'#1a1a2e', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
+                {/* PDF Viewer */}
+                <div style={{ flex:1, background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
                     {loading && (
                         <div style={{ textAlign:'center' }}>
-                            <div className="spin" style={{ width:40,height:40,border:'3px solid rgba(99,102,241,0.2)',borderTopColor:'#6366f1',borderRadius:'50%',margin:'0 auto 14px' }}/>
+                            <div className="spin" style={{ width:40,height:40,border:'3px solid rgba(99,102,241,0.18)',borderTopColor:'#6366f1',borderRadius:'50%',margin:'0 auto 14px' }}/>
                             <p style={{ color:'var(--text-muted)', fontSize:'0.88rem' }}>Loading PDF…</p>
                         </div>
                     )}
                     {error && (
                         <div style={{ textAlign:'center', padding:40 }}>
-                            <BookOpen size={44} style={{ color:'var(--text-muted)', opacity:0.3, margin:'0 auto 16px', display:'block' }}/>
+                            <BookOpen size={44} style={{ color:'var(--text-muted)', opacity:0.2, margin:'0 auto 16px', display:'block' }}/>
                             <p style={{ color:'#f87171', marginBottom:8 }}>{error}</p>
-                            <p style={{ color:'var(--text-muted)', fontSize:'0.8rem' }}>The PDF may not have been stored in the file bucket. Try re-uploading.</p>
+                            <p style={{ color:'var(--text-muted)', fontSize:'0.8rem' }}>The PDF may not be in the file bucket. Try re-uploading.</p>
                         </div>
                     )}
                     {!loading && !error && iframeSrc && (
                         <iframe
-                            key={iframeSrc}          /* key change forces React to remount = true navigation */
+                            key={iframeSrc}
                             src={iframeSrc}
                             title={bookMeta.filename}
-                            style={{ width:'100%', height:'100%', border:'none' }}
+                            style={{ width:'100%', height:'100%', border:'none', display:'block' }}
                         />
                     )}
-                    
-                    {/* Transparent Drawing Canvas Overlay */}
+
+                    {/* Draw canvas — ONLY captures pointer events when drawMode is ON */}
                     {!loading && !error && (
-                        <canvas 
+                        <canvas
                             ref={canvasRef}
                             onMouseDown={startDraw}
                             onMouseMove={draw}
                             onMouseUp={stopDraw}
                             onMouseLeave={stopDraw}
-                            style={{ 
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                                pointerEvents: drawMode ? 'auto' : 'none', cursor: drawMode ? 'crosshair' : 'default',
-                                zIndex: 10
+                            style={{
+                                position:'absolute', inset:0,
+                                width:'100%', height:'100%',
+                                pointerEvents: drawMode ? 'auto' : 'none',
+                                cursor: drawMode ? 'crosshair' : 'default',
+                                zIndex: 5,
                             }}
                         />
                     )}
 
-                    {/* Floating "Ask AI" button over the PDF */}
-                    {!loading && !error && (
-                        <button
-                            onClick={() => setTab('chat')}
-                            style={{
-                                position:'absolute', bottom:20, right:20,
-                                display:'flex', alignItems:'center', gap:7,
-                                padding:'9px 16px', borderRadius:24,
-                                background:'linear-gradient(135deg,#4f46e5,#7c3aed)',
-                                border:'1px solid rgba(255,255,255,0.15)',
-                                color:'white', fontWeight:700, fontSize:'0.8rem',
-                                cursor:'pointer', fontFamily:'inherit',
-                                boxShadow:'0 4px 20px rgba(79,70,229,0.45)',
-                                transition:'all 0.2s',
-                            }}
-                            onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.05)';e.currentTarget.style.boxShadow='0 6px 28px rgba(79,70,229,0.6)';}}
-                            onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow='0 4px 20px rgba(79,70,229,0.45)';}}
-                        >
-                            <Sparkles size={13}/> Ask AI
-                        </button>
-                    )}
-                    
-                    {/* Floating Drawing Toolbar */}
-                    {!loading && !error && (
-                        <div style={{ position:'absolute', bottom:20, left:20, display:'flex', gap:8, zIndex:20 }}>
-                            <button onClick={() => setDrawMode(!drawMode)}
-                                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:24, background:drawMode?'#eab308':'rgba(6,11,24,0.8)', border:`1px solid ${drawMode?'#ca8a04':'var(--border)'}`, color:drawMode?'#000':'var(--text-secondary)', fontWeight:700, fontSize:'0.75rem', cursor:'pointer', fontFamily:'inherit', backdropFilter:'blur(4px)', transition:'all 0.2s', boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}>
-                                <PenTool size={13}/> {drawMode ? 'Drawing On' : 'Draw'}
-                            </button>
-                            {drawMode && (
-                                <button onClick={clearDraw}
-                                    style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', borderRadius:24, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontWeight:700, fontSize:'0.75rem', cursor:'pointer', fontFamily:'inherit', backdropFilter:'blur(4px)', transition:'all 0.2s' }}>
-                                    <Eraser size={13}/> Clear
-                                </button>
-                            )}
+                    {/* Highlight mode indicator banner */}
+                    {drawMode && (
+                        <div style={{
+                            position:'absolute', top:10, left:'50%', transform:'translateX(-50%)',
+                            background:'rgba(234,179,8,0.15)', border:'1px solid rgba(234,179,8,0.35)',
+                            borderRadius:20, padding:'5px 14px', zIndex:20,
+                            display:'flex', alignItems:'center', gap:6,
+                        }}>
+                            <PenTool size={11} color="#fbbf24"/>
+                            <span style={{ fontSize:'0.73rem', color:'#fbbf24', fontWeight:700 }}>Highlight mode ON — click &amp; drag to mark text</span>
+                            <button onClick={() => setDrawMode(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#fbbf24', padding:0, lineHeight:1, display:'flex', alignItems:'center' }}><X size={13}/></button>
                         </div>
                     )}
                 </div>
 
-                {/* Right panel */}
-                <div ref={rightPanelRef} style={{ width:320, flexShrink:0, borderLeft:'1px solid var(--border)', display:'flex', flexDirection:'column', background:'rgba(6,11,24,0.75)' }} onMouseUp={handleRightPanelMouseUp}>
-                    <div style={{ display:'flex', borderBottom:'1px solid var(--border)' }}>
-                        {[{id:'chat',icon:<Bot size={13}/>,label:'Ask AI'},{id:'notes',icon:<StickyNote size={13}/>,label:'My Notes'}].map(t=>(
-                            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:'11px', display:'flex', alignItems:'center', justifyContent:'center', gap:5, border:'none', background:'transparent', color:tab===t.id?'#818cf8':'var(--text-muted)', fontWeight:tab===t.id?700:400, fontSize:'0.8rem', cursor:'pointer', fontFamily:'inherit', borderBottom:tab===t.id?'2px solid #6366f1':'2px solid transparent', transition:'all 0.2s' }}>
-                                {t.icon}{t.label}
+                {/* Right panel (collapsible) */}
+                {panelOpen && (
+                    <div
+                        ref={rightPanelRef}
+                        onMouseUp={handleRightPanelMouseUp}
+                        style={{
+                            width:300, flexShrink:0,
+                            borderLeft:'1px solid var(--border)',
+                            display:'flex', flexDirection:'column',
+                            background:'rgba(6,11,24,0.88)',
+                        }}
+                    >
+                        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
+                            {[{id:'chat',icon:<Bot size={13}/>,label:'Ask AI'},{id:'notes',icon:<StickyNote size={13}/>,label:'My Notes'}].map(t=>(
+                                <button key={t.id} onClick={()=>setTab(t.id)} style={{
+                                    flex:1, padding:'10px',
+                                    display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                                    border:'none', background:'transparent',
+                                    color:tab===t.id?'#818cf8':'var(--text-muted)',
+                                    fontWeight:tab===t.id?700:400, fontSize:'0.78rem',
+                                    cursor:'pointer', fontFamily:'inherit',
+                                    borderBottom:tab===t.id?'2px solid #6366f1':'2px solid transparent',
+                                    transition:'all 0.2s',
+                                }}>
+                                    {t.icon}{t.label}
+                                </button>
+                            ))}
+                            <button onClick={()=>setPanelOpen(false)} style={{ padding:'10px 12px', background:'transparent', border:'none', cursor:'pointer', color:'var(--text-muted)', display:'flex', alignItems:'center' }}>
+                                <X size={14}/>
                             </button>
-                        ))}
+                        </div>
+                        <div style={{ flex:1, overflow:'hidden', minHeight:0 }}>
+                            {tab==='chat'
+                                ? <MiniChat
+                                    bookName={bookMeta.title || bookMeta.filename.replace('.pdf','')}
+                                    bookId={bookMeta.id}
+                                    onJumpToPage={jumpToPage}
+                                    prefilledInput={prefilledMsg}
+                                    onPrefilledConsumed={() => setPrefilledMsg('')}
+                                  />
+                                : <NotesPanel bookId={bookMeta.id}/>
+                            }
+                        </div>
                     </div>
-                    <div style={{ flex:1, overflow:'hidden' }}>
-                        {tab==='chat'
-                            ? <MiniChat
-                                bookName={bookMeta.filename.replace('.pdf','')}
-                                bookId={bookMeta.id}
-                                onJumpToPage={jumpToPage}
-                                prefilledInput={prefilledMsg}
-                                onPrefilledConsumed={() => setPrefilledMsg('')}
-                              />
-                            : <NotesPanel bookId={bookMeta.id}/>
-                        }
-                    </div>
-                </div>
+                )}
             </div>
 
             <style>{`
@@ -449,11 +486,11 @@ const BookReader = ({ bookMeta, onBack, user }) => {
     );
 };
 
-// ─── BookLibrary (main BookAI view) ──────────────────────────────────────────
+// ─── BookLibrary ──────────────────────────────────────────────────────────────
 const BookLibrary = ({ user }) => {
     const [books,      setBooks]      = useState([]);
     const [loading,    setLoading]    = useState(true);
-    const [activeBook, setActiveBook] = useState(null);
+    const [activeBook, setActiveBook] = useState(null);   // { book, initialPanel, initialHighlight }
     const [filter,     setFilter]     = useState('all');
     const gradeLevel = user?.grade_level ? parseInt(user.grade_level) : null;
 
@@ -461,7 +498,15 @@ const BookLibrary = ({ user }) => {
         fetch('/api/library').then(r=>r.json()).then(d=>{ if(d.books) setBooks(d.books); }).catch(()=>{}).finally(()=>setLoading(false));
     }, []);
 
-    if (activeBook) return <BookReader bookMeta={activeBook} onBack={()=>setActiveBook(null)} user={user}/>;
+    if (activeBook) return (
+        <BookReader
+            bookMeta={activeBook.book}
+            onBack={() => setActiveBook(null)}
+            user={user}
+            initialPanel={activeBook.initialPanel}
+            initialHighlight={activeBook.initialHighlight}
+        />
+    );
 
     const eligible = books.filter(b => {
         if (gradeLevel === null) return true;
@@ -469,13 +514,13 @@ const BookLibrary = ({ user }) => {
         const max = parseInt(b.max_grade) || min;
         return gradeLevel >= min && gradeLevel <= max;
     });
-    const subjects  = [...new Set(eligible.map(b => b.subject || 'General'))].sort();
-    const grouped   = subjects.reduce((acc, s) => { acc[s] = eligible.filter(b=>(b.subject||'General')===s); return acc; }, {});
-    const filtered  = filter==='all' ? grouped : { [filter]: grouped[filter]||[] };
+    const subjects = [...new Set(eligible.map(b => b.subject || 'General'))].sort();
+    const grouped  = subjects.reduce((acc, s) => { acc[s] = eligible.filter(b=>(b.subject||'General')===s); return acc; }, {});
+    const filtered = filter==='all' ? grouped : { [filter]: grouped[filter]||[] };
 
     return (
         <div style={{ height:'100%', overflowY:'auto' }}>
-            <div style={{ maxWidth:900, margin:'0 auto', padding:'32px 28px' }}>
+            <div style={{ maxWidth:960, margin:'0 auto', padding:'32px 28px' }}>
                 <div style={{ marginBottom:24 }}>
                     <h1 style={{ fontSize:'1.6rem', fontWeight:800, letterSpacing:'-0.03em', marginBottom:4 }}>
                         📚 Book<span className="gradient-text">AI</span>
@@ -513,33 +558,76 @@ const BookLibrary = ({ user }) => {
                             <div style={{ flex:1, height:1, background:'var(--border)' }}/>
                             <span style={{ fontSize:'0.73rem', color:'var(--text-muted)' }}>{bks.length} book{bks.length!==1?'s':''}</span>
                         </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:14 }}>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(230px,1fr))', gap:16 }}>
                             {bks.map(book => {
                                 const sc = SUBJECT_COLORS[book.subject]||SUBJECT_COLORS.General;
                                 return (
-                                    <button key={book.id} onClick={()=>setActiveBook(book)} style={{ display:'flex',flexDirection:'column',gap:12,padding:'18px 16px',borderRadius:14,border:'1px solid var(--border)',background:'var(--bg-card)',cursor:'pointer',textAlign:'left',fontFamily:'inherit',transition:'all 0.25s',position:'relative',overflow:'hidden' }}
-                                    onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.borderColor=sc.border;e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,0.3)';}}
-                                    onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='none';}}
+                                    <div key={book.id} style={{ display:'flex', flexDirection:'column', borderRadius:14, border:'1px solid var(--border)', background:'var(--bg-card)', overflow:'hidden', transition:'all 0.25s', position:'relative' }}
+                                        onMouseEnter={e=>{e.currentTarget.style.borderColor=sc.border;e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 8px 28px rgba(0,0,0,0.3)';}}
+                                        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='none';}}
                                     >
-                                        <div style={{ position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${sc.color},transparent)`,borderRadius:'14px 14px 0 0' }}/>
-                                        <div style={{ width:44,height:44,borderRadius:12,background:sc.bg,display:'flex',alignItems:'center',justifyContent:'center' }}>
-                                            <BookOpen size={22} color={sc.color}/>
-                                        </div>
-                                        <div style={{ flex:1 }}>
-                                            <p style={{ fontWeight:700,fontSize:'0.88rem',color:'var(--text-primary)',lineHeight:1.4,marginBottom:4 }}>
-                                                {(book.title || book.filename.replace('.pdf','').replace(/_/g,' '))}
-                                            </p>
-                                            {book.author && <p style={{ fontSize:'0.72rem', color:'var(--text-muted)', marginBottom:4 }}>by {book.author}</p>}
-                                            <div style={{ display:'flex',gap:6,alignItems:'center' }}>
-                                                <span style={{ fontSize:'0.7rem',color:sc.color,fontWeight:600 }}>{book.subject||'General'}</span>
-                                                <span style={{ color:'var(--text-muted)',fontSize:'0.7rem' }}>· Gr{book.min_grade}+</span>
+                                        {/* Color top stripe */}
+                                        <div style={{ height:3, background:`linear-gradient(90deg,${sc.color},transparent)` }}/>
+
+                                        {/* Main clickable area */}
+                                        <button
+                                            onClick={() => setActiveBook({ book, initialPanel: null, initialHighlight: false })}
+                                            style={{ display:'flex', flexDirection:'column', gap:10, padding:'16px 16px 12px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left', fontFamily:'inherit', flex:1 }}
+                                        >
+                                            <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+                                                <div style={{ width:42,height:42,borderRadius:11,background:sc.bg,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+                                                    <BookOpen size={21} color={sc.color}/>
+                                                </div>
+                                                <div style={{ flex:1, minWidth:0 }}>
+                                                    <p style={{ fontWeight:700, fontSize:'0.87rem', color:'var(--text-primary)', lineHeight:1.35, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                                        {book.title || book.filename.replace('.pdf','').replace(/_/g,' ')}
+                                                    </p>
+                                                    {book.author && <p style={{ fontSize:'0.71rem', color:'var(--text-muted)', marginBottom:3 }}>by {book.author}</p>}
+                                                    <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                                                        <span style={{ fontSize:'0.69rem', color:sc.color, fontWeight:600 }}>{book.subject||'General'}</span>
+                                                        <span style={{ color:'var(--text-muted)', fontSize:'0.69rem' }}>· Gr{book.min_grade}+</span>
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                                                <span style={{ fontSize:'0.67rem', color:'var(--text-muted)' }}>{new Date(book.upload_date).toLocaleDateString()}</span>
+                                                <div style={{ display:'flex', alignItems:'center', gap:4, color:sc.color, fontSize:'0.73rem', fontWeight:700 }}>Open <ChevronRight size={12}/></div>
+                                            </div>
+                                        </button>
+
+                                        {/* Bottom action buttons */}
+                                        <div style={{ display:'flex', borderTop:'1px solid var(--border)', padding:'0' }}>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); setActiveBook({ book, initialPanel:'notes', initialHighlight:false }); }}
+                                                style={{
+                                                    flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                                                    padding:'9px 6px', background:'transparent', border:'none',
+                                                    borderRight:'1px solid var(--border)',
+                                                    color:'var(--text-muted)', cursor:'pointer', fontFamily:'inherit',
+                                                    fontSize:'0.72rem', fontWeight:600, transition:'all 0.18s',
+                                                }}
+                                                onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,191,36,0.07)';e.currentTarget.style.color='#fbbf24';}}
+                                                onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='var(--text-muted)';}}
+                                                title="Open book with sticky notes panel"
+                                            >
+                                                <StickyNote size={12}/>📝 Sticky Notes
+                                            </button>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); setActiveBook({ book, initialPanel: null, initialHighlight:true }); }}
+                                                style={{
+                                                    flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                                                    padding:'9px 6px', background:'transparent', border:'none',
+                                                    color:'var(--text-muted)', cursor:'pointer', fontFamily:'inherit',
+                                                    fontSize:'0.72rem', fontWeight:600, transition:'all 0.18s',
+                                                }}
+                                                onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,191,36,0.07)';e.currentTarget.style.color='#fbbf24';}}
+                                                onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='var(--text-muted)';}}
+                                                title="Open book with highlighting tool active"
+                                            >
+                                                <PenTool size={12}/>✏️ Highlight
+                                            </button>
                                         </div>
-                                        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-                                            <span style={{ fontSize:'0.68rem',color:'var(--text-muted)' }}>{new Date(book.upload_date).toLocaleDateString()}</span>
-                                            <div style={{ display:'flex',alignItems:'center',gap:4,color:sc.color,fontSize:'0.75rem',fontWeight:600 }}>Open <ChevronRight size={13}/></div>
-                                        </div>
-                                    </button>
+                                    </div>
                                 );
                             })}
                         </div>
