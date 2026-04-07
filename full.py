@@ -714,6 +714,162 @@ Rules: Use only content from the documents. DO NOT use external knowledge. Make 
         print(f"Error generating flashcards: {e}")
         return jsonify({'error': str(e)}), 500
 
+# ─── Saved Quizzes / Flashcards ──────────────────────────────────────────────
+
+import string as _string, random as _random
+
+def _gen_share_code():
+    chars = _string.ascii_uppercase + _string.digits
+    return ''.join(_random.choices(chars, k=6))
+
+@app.route('/api/saved_quizzes', methods=['POST'])
+def save_quiz():
+    """Save a quiz or flashcard set to the database."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required to save quizzes.'}), 403
+    data = request.json or {}
+    name  = (data.get('name') or '').strip()
+    qtype = data.get('type')     # 'quiz' | 'flashcard'
+    qdata = data.get('data')     # list of questions or cards
+    if not name or not qtype or not qdata:
+        return jsonify({'error': 'name, type, and data are required.'}), 400
+    try:
+        result = supabase.table('saved_quizzes').insert({
+            'user_id':  session['user_id'],
+            'username': session.get('username', 'unknown'),
+            'name':     name,
+            'type':     qtype,
+            'data':     qdata,
+        }).execute()
+        return jsonify({'saved': result.data[0]}), 201
+    except Exception as e:
+        print(f'[save_quiz] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/saved_quizzes', methods=['GET'])
+def list_saved_quizzes():
+    """List all saved quizzes/flashcards for the logged-in user."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required.'}), 403
+    try:
+        result = supabase.table('saved_quizzes') \
+            .select('id, name, type, share_code, created_at') \
+            .eq('user_id', session['user_id']) \
+            .order('created_at', desc=True) \
+            .execute()
+        return jsonify({'items': result.data}), 200
+    except Exception as e:
+        print(f'[list_saved_quizzes] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/saved_quizzes/<int:item_id>', methods=['PUT'])
+def rename_saved_quiz(item_id):
+    """Rename a saved quiz/flashcard."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required.'}), 403
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'name is required.'}), 400
+    try:
+        result = supabase.table('saved_quizzes') \
+            .update({'name': name}) \
+            .eq('id', item_id) \
+            .eq('user_id', session['user_id']) \
+            .execute()
+        if not result.data:
+            return jsonify({'error': 'Not found or not yours.'}), 404
+        return jsonify({'updated': result.data[0]}), 200
+    except Exception as e:
+        print(f'[rename_saved_quiz] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/saved_quizzes/<int:item_id>', methods=['DELETE'])
+def delete_saved_quiz(item_id):
+    """Delete a saved quiz/flashcard."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required.'}), 403
+    try:
+        result = supabase.table('saved_quizzes') \
+            .delete() \
+            .eq('id', item_id) \
+            .eq('user_id', session['user_id']) \
+            .execute()
+        if not result.data:
+            return jsonify({'error': 'Not found or not yours.'}), 404
+        return jsonify({'deleted': True}), 200
+    except Exception as e:
+        print(f'[delete_saved_quiz] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/saved_quizzes/<int:item_id>/data', methods=['GET'])
+def get_saved_quiz_data(item_id):
+    """Return the full data (questions/cards) for a saved item owned by the session user."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required.'}), 403
+    try:
+        result = supabase.table('saved_quizzes') \
+            .select('id, name, type, data, share_code, created_at') \
+            .eq('id', item_id) \
+            .eq('user_id', session['user_id']) \
+            .execute()
+        if not result.data:
+            return jsonify({'error': 'Not found or not yours.'}), 404
+        return jsonify({'item': result.data[0]}), 200
+    except Exception as e:
+        print(f'[get_saved_quiz_data] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/saved_quizzes/<int:item_id>/share', methods=['POST'])
+def share_saved_quiz(item_id):
+    """Generate (or return existing) a 6-char share code for a saved item."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required.'}), 403
+    try:
+        # Check if already has a code
+        existing = supabase.table('saved_quizzes') \
+            .select('share_code') \
+            .eq('id', item_id) \
+            .eq('user_id', session['user_id']) \
+            .execute()
+        if not existing.data:
+            return jsonify({'error': 'Not found or not yours.'}), 404
+        code = existing.data[0].get('share_code')
+        if not code:
+            # Generate unique code
+            for _ in range(10):
+                candidate = _gen_share_code()
+                clash = supabase.table('saved_quizzes') \
+                    .select('id').eq('share_code', candidate).execute()
+                if not clash.data:
+                    code = candidate
+                    break
+            supabase.table('saved_quizzes') \
+                .update({'share_code': code}) \
+                .eq('id', item_id) \
+                .execute()
+        return jsonify({'share_code': code}), 200
+    except Exception as e:
+        print(f'[share_saved_quiz] {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/shared/<string:share_code>', methods=['GET'])
+def load_shared_quiz(share_code):
+    """Load a shared quiz/flashcard by 6-char code. Requires login (not guest)."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'error': 'Account required to load shared quizzes.'}), 403
+    try:
+        result = supabase.table('saved_quizzes') \
+            .select('id, name, type, data, username, created_at') \
+            .eq('share_code', share_code.upper()) \
+            .execute()
+        if not result.data:
+            return jsonify({'error': f'No item found for code "{share_code.upper()}".'}), 404
+        return jsonify({'item': result.data[0]}), 200
+    except Exception as e:
+        print(f'[load_shared_quiz] {e}')
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/study_plan', methods=['POST'])
 def study_plan():
     if 'user_id' not in session:

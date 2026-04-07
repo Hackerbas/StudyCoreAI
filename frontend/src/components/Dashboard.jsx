@@ -285,7 +285,7 @@ const Dashboard = () => {
                 <main style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                     {view==='chat'   && <StudentDashboard chatMessages={activeChat.messages} setChatMessages={updateMessages} createNewChat={createNewChat}/>}
                     {view==='bookAI' && <BookLibrary user={user}/>}
-                    {view==='quiz'   && <QuizView/>}
+                    {view==='quiz'   && <QuizView user={user}/>}
                     {view==='plan'   && <StudyPlanView/>}
                     {view==='stats'  && <StatsView/>}
                     {view==='manage' && isTeacher && <TeacherDashboard/>}
