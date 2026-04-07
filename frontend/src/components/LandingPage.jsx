@@ -30,9 +30,11 @@ const LandingPage = () => {
         <div style={{ minHeight:'100vh', overflowX:'hidden' }}>
             {/* Nav */}
             <header style={{ position:'sticky',top:0,zIndex:50,padding:'0 40px',height:60,display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(6,11,24,0.9)',backdropFilter:'blur(20px)',borderBottom:'1px solid var(--border)' }}>
-                <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                    <div style={{ width:32,height:32,borderRadius:9,background:'linear-gradient(135deg,#4f46e5,#7c3aed)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 18px rgba(99,102,241,0.4)' }}><BookOpen size={15} color="white"/></div>
-                    <span style={{ fontWeight:800,fontSize:'1rem',letterSpacing:'-0.02em' }}>Study<span className="gradient-text">Core AI</span></span>
+                <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+                    <div style={{ width:48,height:48,borderRadius:12,background:'linear-gradient(135deg,#4f46e5,#7c3aed)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 20px rgba(99,102,241,0.4)',overflow:'hidden' }}>
+                        <img src="/favicon.png" alt="Logo" style={{ width:'80%',height:'80%',objectFit:'contain' }}/>
+                    </div>
+                    <span style={{ fontWeight:900,fontSize:'1.3rem',letterSpacing:'-0.03em' }}>Study<span className="gradient-text">Core AI</span></span>
                 </div>
                 <div style={{ display:'flex',gap:8,alignItems:'center' }}>
                     <button onClick={handleGuest} style={{ padding:'7px 16px',borderRadius:9,border:'1px solid var(--border)',background:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'0.82rem',fontWeight:600,fontFamily:'inherit',transition:'all 0.2s',display:'flex',alignItems:'center',gap:6 }}
