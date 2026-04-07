@@ -15,10 +15,15 @@ const features = [
 const LandingPage = () => {
     const navigate   = useNavigate();
     const { loginAsGuest } = useAuth();
+    const [guestError, setGuestError] = React.useState('');
+    const [guestLoading, setGuestLoading] = React.useState(false);
 
     const handleGuest = async () => {
+        setGuestLoading(true); setGuestError('');
         const result = await loginAsGuest();
+        setGuestLoading(false);
         if (result.success) navigate('/dashboard');
+        else setGuestError(result.error || 'Guest login failed. Please try again.');
     };
 
     return (
@@ -53,13 +58,16 @@ const LandingPage = () => {
                 <p className="animate-fade-up" style={{ fontSize:'1.05rem',color:'var(--text-secondary)',maxWidth:560,margin:'0 auto 36px',lineHeight:1.75 }}>
                     Upload your textbooks. StudyCore AI reads them and becomes your personal tutor — chat, quizzes, flashcards, and more. Always using only what you've uploaded.
                 </p>
-                <div className="animate-fade-up" style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
-                    <button onClick={()=>navigate('/register')} className="btn-gradient" style={{ padding:'13px 30px',fontSize:'0.96rem',display:'flex',alignItems:'center',gap:8 }}>
-                        Start Learning <ChevronRight size={17}/>
-                    </button>
-                    <button onClick={handleGuest} style={{ padding:'13px 30px',fontSize:'0.96rem',fontWeight:600,borderRadius:12,border:'1px solid var(--border)',background:'var(--bg-card)',color:'var(--text-primary)',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',display:'flex',alignItems:'center',gap:8 }}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}
-                    ><User size={16}/> Try as Guest</button>
+                <div className="animate-fade-up" style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap', flexDirection:'column', alignItems:'center' }}>
+                    <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+                        <button onClick={() => navigate('/register')} className="btn-gradient" style={{ padding:'13px 30px', fontSize:'0.96rem', display:'flex', alignItems:'center', gap:8 }}>
+                            Start Learning <ChevronRight size={17}/>
+                        </button>
+                        <button onClick={handleGuest} disabled={guestLoading} style={{ padding:'13px 30px', fontSize:'0.96rem', fontWeight:600, borderRadius:12, border:'1px solid var(--border)', background:'var(--bg-card)', color:'var(--text-primary)', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s', display:'flex', alignItems:'center', gap:8, opacity: guestLoading ? 0.7 : 1 }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'} onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+                        ><User size={16}/>{guestLoading ? 'Entering…' : 'Try as Guest'}</button>
+                    </div>
+                    {guestError && <p style={{ color:'#f87171', fontSize:'0.8rem', marginTop:4 }}>{guestError}</p>}
                 </div>
             </section>
 

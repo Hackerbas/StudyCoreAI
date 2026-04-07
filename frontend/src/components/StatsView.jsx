@@ -58,9 +58,12 @@ const StatsView = () => {
     }, []);
 
     const avgScore = stats.quiz_scores?.length
-        ? (stats.quiz_scores.reduce((a,b)=>a+b,0) / stats.quiz_scores.length).toFixed(1)
-        : '—';
-    const bestScore = stats.quiz_scores?.length ? Math.max(...stats.quiz_scores) : '—';
+        ? Math.round(stats.quiz_scores.reduce((a,b)=>a+b,0) / stats.quiz_scores.length)
+        : null;
+    const bestScore = stats.quiz_scores?.length ? Math.max(...stats.quiz_scores) : null;
+    const totalQuestions = stats.quiz_totals?.length
+        ? stats.quiz_totals[stats.quiz_totals.length - 1]
+        : (stats.last_quiz_total || 5);
 
     const reset = () => {
         localStorage.removeItem(STATS_KEY);
@@ -89,8 +92,8 @@ const StatsView = () => {
                     <StatCard icon={<MessageSquare/>} label="Questions Asked"  value={stats.questions_total || 0}     sub={`${stats.questions_today||0} today`} color="#818cf8"/>
                     <StatCard icon={<Brain/>}         label="Quizzes Taken"   value={stats.quizzes_taken || 0}       sub="All time"                   color="#c084fc"/>
                     <StatCard icon={<BookOpen/>}      label="Books Opened"    value={(stats.books_opened||[]).length} sub="Unique documents"           color="#60a5fa"/>
-                    <StatCard icon={<Trophy/>}        label="Best Quiz Score" value={bestScore === '—' ? '—' : `${bestScore}/5`} sub="Your personal best" color="#fbbf24"/>
-                    <StatCard icon={<BarChart2/>}     label="Avg Quiz Score"  value={avgScore === '—' ? '—' : `${avgScore}/5`}  sub="Across all quizzes" color="#34d399"/>
+                    <StatCard icon={<Trophy/>}        label="Best Quiz Score" value={bestScore !== null ? `${bestScore} pts` : '—'} sub="Your personal best" color="#fbbf24"/>
+                    <StatCard icon={<BarChart2/>}     label="Avg Quiz Score"  value={avgScore !== null ? `${avgScore} pts` : '—'}  sub="Across all quizzes" color="#34d399"/>
                 </div>
 
                 {/* Quiz history */}
@@ -98,12 +101,16 @@ const StatsView = () => {
                     <div className="glass" style={{ padding:'22px 24px' }}>
                         <h2 style={{ fontSize:'0.96rem',fontWeight:700,marginBottom:16,display:'flex',alignItems:'center',gap:8 }}><Brain size={16} color="var(--accent)"/> Quiz History</h2>
                         <div style={{ display:'flex',flexWrap:'wrap',gap:8 }}>
-                            {stats.quiz_scores.slice(-20).reverse().map((score,i) => (
-                                <div key={i} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 14px',borderRadius:10,background:'var(--bg-card)', border:`1px solid ${score>=4?'var(--success)':score>=3?'var(--warning)':'var(--danger)'}` }}>
-                                    <span style={{ fontSize:'1.1rem',fontWeight:800,color:score>=4?'var(--success)':score>=3?'var(--warning)':'var(--danger)' }}>{score}/5</span>
-                                    <span style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>Quiz {stats.quiz_scores.length - i}</span>
-                                </div>
-                            ))}
+                            {stats.quiz_scores.slice(-20).reverse().map((score,i) => {
+                                const total = stats.quiz_totals?.[stats.quiz_scores.length - 1 - i] || 5;
+                                const ratio = score / total;
+                                return (
+                                    <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'10px 14px', borderRadius:10, background:'var(--bg-card)', border:`1px solid ${ratio>=0.8?'var(--success)':ratio>=0.6?'var(--warning)':'var(--danger)'}` }}>
+                                        <span style={{ fontSize:'1.1rem', fontWeight:800, color:ratio>=0.8?'var(--success)':ratio>=0.6?'var(--warning)':'var(--danger)' }}>{score} pts</span>
+                                        <span style={{ fontSize:'0.65rem', color:'var(--text-muted)' }}>Quiz {stats.quiz_scores.length - i}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

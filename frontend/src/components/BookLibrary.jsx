@@ -214,6 +214,8 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
     const ctxRef     = useRef(null);
     const isDrawing  = useRef(false);
 
+    const iframeContainerRef = useRef(null);
+
     const initCanvas = useCallback(() => {
         const cvs = canvasRef.current;
         if (!cvs) return;
@@ -222,10 +224,11 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
         const ctx  = cvs.getContext('2d');
         ctx.lineCap     = 'round';
         ctx.lineJoin    = 'round';
-        ctx.globalAlpha = 0.35;  // More transparent so text stays readable
-        ctx.strokeStyle = '#fbbf24'; // Amber yellow
-        ctx.lineWidth   = 16;
-        ctx.globalCompositeOperation = 'multiply'; // Blend with white PDF bg
+        // Use source-over with a semi-transparent yellow — works on both light and dark PDFs
+        ctx.globalAlpha = 0.45;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = 'rgba(251,191,36,0.8)'; // vivid amber
+        ctx.lineWidth   = 18;
         ctxRef.current  = ctx;
     }, []);
 
@@ -238,6 +241,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
 
     const startDraw = e => {
         if (!drawMode || !ctxRef.current) return;
+        if (e.button !== 0) return; // only left-click draws
         isDrawing.current = true;
         const r = canvasRef.current.getBoundingClientRect();
         ctxRef.current.beginPath();
@@ -254,6 +258,15 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
         if (canvasRef.current && ctxRef.current) {
             ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         }
+    };
+    // Forward wheel events from canvas to the iframe so PDF scrolls during highlight mode
+    const forwardWheel = e => {
+        const iframe = iframeContainerRef.current?.querySelector('iframe');
+        if (iframe) {
+            try { iframe.contentWindow.scrollBy(0, e.deltaY); } catch {}
+        }
+        // Also scroll the container itself
+        if (iframeContainerRef.current) iframeContainerRef.current.scrollTop += e.deltaY;
     };
 
     // ─── Load PDF ───
@@ -394,7 +407,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
             <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
 
                 {/* PDF Viewer */}
-                <div style={{ flex:1, background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
+                <div ref={iframeContainerRef} style={{ flex:1, background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
                     {loading && (
                         <div style={{ textAlign:'center' }}>
                             <div className="spin" style={{ width:40,height:40,border:'3px solid rgba(99,102,241,0.18)',borderTopColor:'#6366f1',borderRadius:'50%',margin:'0 auto 14px' }}/>
@@ -417,7 +430,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
                         />
                     )}
 
-                    {/* Draw canvas — ONLY captures pointer events when drawMode is ON */}
+                    {/* Draw canvas — ONLY left-click to draw; wheel events forwarded to iframe so scrolling works */}
                     {!loading && !error && (
                         <canvas
                             ref={canvasRef}
@@ -425,12 +438,14 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
                             onMouseMove={draw}
                             onMouseUp={stopDraw}
                             onMouseLeave={stopDraw}
+                            onWheel={drawMode ? forwardWheel : undefined}
                             style={{
                                 position:'absolute', inset:0,
                                 width:'100%', height:'100%',
                                 pointerEvents: drawMode ? 'auto' : 'none',
                                 cursor: drawMode ? 'crosshair' : 'default',
                                 zIndex: 5,
+                                touchAction: 'none',
                             }}
                         />
                     )}
