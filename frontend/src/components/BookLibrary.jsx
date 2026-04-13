@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, PenTool, Eraser, Clock, X } from 'lucide-react';
+import { BookOpen, ArrowLeft, Bot, Send, StickyNote, Trash2, ChevronRight, Sparkles, FileText, Clock, X } from 'lucide-react';
 
 const SUBJECT_COLORS = {
     Mathematics:        { bg: 'transparent',  color: '#fbbf24', border: 'var(--border)' },
@@ -39,8 +39,12 @@ const SelectionPopup = ({ position, onAskAI }) => {
 // ─── Mini AI Chat ──────────────────────────────────────────────────────────────
 import AdvancedPdfReader from './AdvancedPdfReader';
 
-const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed, onHighlights }) => {
-    const [msgs,    setMsgs]    = useState([{ role:'assistant', content:`I'm ready! Ask me anything about "${bookName}".` }]);
+const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledConsumed }) => {
+    const chatKey = `sc_chat_${bookId}`;
+    const [msgs,    setMsgs]    = useState(() => {
+        try { return JSON.parse(localStorage.getItem(chatKey)) || [{ role:'assistant', content:`I'm ready! Ask me anything about "${bookName}".` }]; }
+        catch { return [{ role:'assistant', content:`I'm ready! Ask me anything about "${bookName}".` }]; }
+    });
     const [input,   setInput]   = useState('');
     const [loading, setLoading] = useState(false);
     const bottomRef = useRef(null);
@@ -57,11 +61,16 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
         }
     }, [prefilledInput]); // eslint-disable-line
 
+    const saveMessages = (updated) => {
+        try { localStorage.setItem(chatKey, JSON.stringify(updated)); } catch {}
+    };
+
     const sendMsg = useCallback(async (override) => {
         const q = (override ?? input).trim();
         if (!q || loading) return;
         setInput('');
-        setMsgs(p => [...p, { role:'user', content: q }]);
+        const withUser = (prev) => { const u = [...prev, { role:'user', content: q }]; saveMessages(u); return u; };
+        setMsgs(p => withUser(p));
         setLoading(true);
         try {
             const body = { query: q };
@@ -69,17 +78,13 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
             const res  = await fetch('/api/chat', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
             if (res.ok) {
-                setMsgs(p => [...p, { role:'assistant', content: data.response, page: data.page || null }]);
-                if (data.highlights && data.highlights.length > 0) {
-                    onHighlights?.(data.highlights);
-                    if (data.highlights[0].page) {
-                        onJumpToPage?.(data.highlights[0].page);
-                    }
-                }
+                const newMsg = { role:'assistant', content: data.response, page: data.page || null };
+                setMsgs(p => { const u = [...p, newMsg]; saveMessages(u); return u; });
+                if (data.page) onJumpToPage?.(data.page);
             } else {
-                setMsgs(p => [...p, { role:'assistant', content: 'Error: '+data.error }]);
+                setMsgs(p => { const u = [...p, { role:'assistant', content: 'Error: '+data.error }]; saveMessages(u); return u; });
             }
-        } catch { setMsgs(p => [...p, { role:'assistant', content: 'Network error.' }]); }
+        } catch { setMsgs(p => { const u = [...p, { role:'assistant', content: 'Network error.' }]; saveMessages(u); return u; }); }
         finally { setLoading(false); }
     }, [input, loading, bookId]);
 
@@ -175,7 +180,7 @@ const NotesPanel = ({ bookId }) => {
 // ─── Book Reader ──────────────────────────────────────────────────────────────
 // initialPanel: null | 'chat' | 'notes'
 // initialHighlight: boolean
-const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) => {
+const BookReader = ({ bookMeta, onBack, user, initialPanel }) => {
     const [pdfUrl,    setPdfUrl]    = useState(null);
     const [iframeSrc, setIframeSrc] = useState(null);
     const [loading,   setLoading]   = useState(true);
@@ -207,67 +212,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
     }, [progKey]);
     const formatTime = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
 
-    // ─── Highlight / Draw overlay ───
-    // Canvas sits ABOVE the iframe but only captures events in drawMode
-    const [drawMode, setDrawMode] = useState(!!initialHighlight);
-    const canvasRef  = useRef(null);
-    const ctxRef     = useRef(null);
-    const isDrawing  = useRef(false);
-
     const iframeContainerRef = useRef(null);
-
-    const initCanvas = useCallback(() => {
-        const cvs = canvasRef.current;
-        if (!cvs) return;
-        cvs.width  = cvs.offsetWidth;
-        cvs.height = cvs.offsetHeight;
-        const ctx  = cvs.getContext('2d');
-        ctx.lineCap     = 'round';
-        ctx.lineJoin    = 'round';
-        // Use source-over with a semi-transparent yellow — works on both light and dark PDFs
-        ctx.globalAlpha = 0.45;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = 'rgba(251,191,36,0.8)'; // vivid amber
-        ctx.lineWidth   = 18;
-        ctxRef.current  = ctx;
-    }, []);
-
-    useEffect(() => {
-        if (!drawMode) return;
-        initCanvas();
-        window.addEventListener('resize', initCanvas);
-        return () => window.removeEventListener('resize', initCanvas);
-    }, [drawMode, initCanvas]);
-
-    const startDraw = e => {
-        if (!drawMode || !ctxRef.current) return;
-        if (e.button !== 0) return; // only left-click draws
-        isDrawing.current = true;
-        const r = canvasRef.current.getBoundingClientRect();
-        ctxRef.current.beginPath();
-        ctxRef.current.moveTo(e.clientX - r.left, e.clientY - r.top);
-    };
-    const draw = e => {
-        if (!isDrawing.current || !ctxRef.current) return;
-        const r = canvasRef.current.getBoundingClientRect();
-        ctxRef.current.lineTo(e.clientX - r.left, e.clientY - r.top);
-        ctxRef.current.stroke();
-    };
-    const stopDraw = () => { isDrawing.current = false; ctxRef.current?.closePath(); };
-    const clearDraw = () => {
-        if (canvasRef.current && ctxRef.current) {
-            ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        }
-    };
-    // Forward wheel events from canvas to the iframe so PDF scrolls during highlight mode
-    const forwardWheel = e => {
-        const iframe = iframeContainerRef.current?.querySelector('iframe');
-        if (iframe) {
-            try { iframe.contentWindow.scrollBy(0, e.deltaY); } catch {}
-        }
-        // Also scroll the container itself
-        if (iframeContainerRef.current) iframeContainerRef.current.scrollTop += e.deltaY;
-    };
 
     // ─── Load PDF ───
     useEffect(() => {
@@ -353,31 +298,6 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
                     <span style={{ fontSize:'0.7rem', fontWeight:600, color:'var(--text-secondary)' }}>{formatTime(timeSpent)}</span>
                 </div>
 
-                {/* Highlight toggle */}
-                <button onClick={() => setDrawMode(d => !d)} style={{
-                    display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
-                    borderRadius:8, cursor:'pointer', fontFamily:'inherit',
-                    fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
-                    border: drawMode ? '1px solid #ca8a04' : '1px solid var(--border)',
-                    background: drawMode ? 'rgba(234,179,8,0.15)' : 'transparent',
-                    color: drawMode ? '#fbbf24' : 'var(--text-muted)',
-                }}>
-                    <PenTool size={12}/>{drawMode ? 'Highlighting' : 'Highlight'}
-                </button>
-
-                {/* Erase (only in draw mode) */}
-                {drawMode && (
-                    <button onClick={clearDraw} style={{
-                        display:'flex', alignItems:'center', gap:4, padding:'5px 9px',
-                        borderRadius:8, cursor:'pointer', fontFamily:'inherit',
-                        fontSize:'0.74rem', fontWeight:700, transition:'all 0.18s',
-                        border:'1px solid rgba(239,68,68,0.35)',
-                        background:'rgba(239,68,68,0.08)', color:'#ef4444',
-                    }}>
-                        <Eraser size={11}/> Clear
-                    </button>
-                )}
-
                 {/* Notes toggle */}
                 <button onClick={() => panelOpen && tab==='notes' ? setPanelOpen(false) : openPanel('notes')} style={{
                     display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
@@ -430,39 +350,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
                         />
                     )}
 
-                    {/* Draw canvas — ONLY left-click to draw; wheel events forwarded to iframe so scrolling works */}
-                    {!loading && !error && (
-                        <canvas
-                            ref={canvasRef}
-                            onMouseDown={startDraw}
-                            onMouseMove={draw}
-                            onMouseUp={stopDraw}
-                            onMouseLeave={stopDraw}
-                            onWheel={drawMode ? forwardWheel : undefined}
-                            style={{
-                                position:'absolute', inset:0,
-                                width:'100%', height:'100%',
-                                pointerEvents: drawMode ? 'auto' : 'none',
-                                cursor: drawMode ? 'crosshair' : 'default',
-                                zIndex: 5,
-                                touchAction: 'none',
-                            }}
-                        />
-                    )}
 
-                    {/* Highlight mode indicator banner */}
-                    {drawMode && (
-                        <div style={{
-                            position:'absolute', top:10, left:'50%', transform:'translateX(-50%)',
-                            background:'rgba(234,179,8,0.15)', border:'1px solid rgba(234,179,8,0.35)',
-                            borderRadius:20, padding:'5px 14px', zIndex:20,
-                            display:'flex', alignItems:'center', gap:6,
-                        }}>
-                            <PenTool size={11} color="#fbbf24"/>
-                            <span style={{ fontSize:'0.73rem', color:'#fbbf24', fontWeight:700 }}>Highlight mode ON — click &amp; drag to mark text</span>
-                            <button onClick={() => setDrawMode(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#fbbf24', padding:0, lineHeight:1, display:'flex', alignItems:'center' }}><X size={13}/></button>
-                        </div>
-                    )}
                 </div>
 
                 {/* Right panel (collapsible) */}
@@ -498,7 +386,7 @@ const BookReader = ({ bookMeta, onBack, user, initialPanel, initialHighlight }) 
                         </div>
                         <div style={{ flex:1, overflow:'hidden', minHeight:0 }}>
                             {tab==='chat'
-                                ? <MiniChat
+                ? <MiniChat
                                     bookName={bookMeta.title || bookMeta.filename.replace('.pdf','')}
                                     bookId={bookMeta.id}
                                     onJumpToPage={jumpToPage}
@@ -540,7 +428,6 @@ const BookLibrary = ({ user }) => {
             onBack={() => setActiveBook(null)}
             user={user}
             initialPanel={activeBook.initialPanel}
-            initialHighlight={activeBook.initialHighlight}
         />
     );
 
@@ -631,14 +518,13 @@ const BookLibrary = ({ user }) => {
                                             </div>
                                         </button>
 
-                                        {/* Bottom action buttons */}
+                                        {/* Bottom action button */}
                                         <div style={{ display:'flex', borderTop:'1px solid var(--border)', padding:'0' }}>
                                             <button
-                                                onClick={e => { e.stopPropagation(); setActiveBook({ book, initialPanel:'notes', initialHighlight:false }); }}
+                                                onClick={e => { e.stopPropagation(); setActiveBook({ book, initialPanel:'notes' }); }}
                                                 style={{
                                                     flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5,
                                                     padding:'9px 6px', background:'transparent', border:'none',
-                                                    borderRight:'1px solid var(--border)',
                                                     color:'var(--text-muted)', cursor:'pointer', fontFamily:'inherit',
                                                     fontSize:'0.72rem', fontWeight:600, transition:'all 0.18s',
                                                 }}
@@ -647,20 +533,6 @@ const BookLibrary = ({ user }) => {
                                                 title="Open book with sticky notes panel"
                                             >
                                                 <StickyNote size={12}/>📝 Sticky Notes
-                                            </button>
-                                            <button
-                                                onClick={e => { e.stopPropagation(); setActiveBook({ book, initialPanel: null, initialHighlight:true }); }}
-                                                style={{
-                                                    flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-                                                    padding:'9px 6px', background:'transparent', border:'none',
-                                                    color:'var(--text-muted)', cursor:'pointer', fontFamily:'inherit',
-                                                    fontSize:'0.72rem', fontWeight:600, transition:'all 0.18s',
-                                                }}
-                                                onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,191,36,0.07)';e.currentTarget.style.color='#fbbf24';}}
-                                                onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='var(--text-muted)';}}
-                                                title="Open book with highlighting tool active"
-                                            >
-                                                <PenTool size={12}/>✏️ Highlight
                                             </button>
                                         </div>
                                     </div>
