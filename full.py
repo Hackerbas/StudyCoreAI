@@ -578,13 +578,17 @@ Only include highlights if you have a specific page and text you want to annotat
             ai_data = json.loads(chat_completion.choices[0].message.content)
             result = {
                 'response': ai_data.get('response', ''),
-                'highlights': ai_data.get('highlights', [])
+                'highlights': ai_data.get('highlights', []),
+                'page': None,
             }
         except json.JSONDecodeError:
-            result = {'response': chat_completion.choices[0].message.content, 'highlights': []}
+            result = {'response': chat_completion.choices[0].message.content, 'highlights': [], 'page': None}
             
-        if found_page and not result.get('highlights'):
-            result['highlights'] = [{'page': found_page, 'text': '', 'note': 'Jump to relevant page.'}]
+        # Set page from found_page (physical PDF page from keyword search)
+        if found_page:
+            result['page'] = found_page
+        elif result.get('highlights'):
+            result['page'] = result['highlights'][0].get('page')
             
         return jsonify(result), 200
     except Exception as e:

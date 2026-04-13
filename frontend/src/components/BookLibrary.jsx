@@ -80,7 +80,6 @@ const MiniChat = ({ bookName, bookId, onJumpToPage, prefilledInput, onPrefilledC
             if (res.ok) {
                 const newMsg = { role:'assistant', content: data.response, page: data.page || null };
                 setMsgs(p => { const u = [...p, newMsg]; saveMessages(u); return u; });
-                if (data.page) onJumpToPage?.(data.page);
             } else {
                 setMsgs(p => { const u = [...p, { role:'assistant', content: 'Error: '+data.error }]; saveMessages(u); return u; });
             }
