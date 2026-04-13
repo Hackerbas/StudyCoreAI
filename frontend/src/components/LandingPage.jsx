@@ -48,7 +48,7 @@ const LandingPage = () => {
                     Your Books.<br/><span className="gradient-text">Your Private AI Tutor.</span>
                 </h1>
                 <p className="animate-fade-up" style={{ fontSize:'1.05rem',color:'var(--text-secondary)',maxWidth:560,margin:'0 auto 36px',lineHeight:1.75 }}>
-                    Upload your textbooks. Teacher Assist reads them and becomes your personal tutor — chat, quizzes, flashcards, and more. Always using only what you've uploaded.
+                    Teacher Assist reads selected pdfs and becomes your personal tutor — chat, quizzes, flashcards, and more. Always using only what you've uploaded.
                 </p>
                 <div className="animate-fade-up" style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap', flexDirection:'column', alignItems:'center' }}>
                     <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
