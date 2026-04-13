@@ -37,7 +37,7 @@ const Register = () => {
                         <BookOpen size={24} color="white"/>
                     </div>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: 6 }}>Create your account</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>Join StudyCore and start learning smarter</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>Join Teacher Assist and start learning smarter</p>
                 </div>
 
                 {success && (

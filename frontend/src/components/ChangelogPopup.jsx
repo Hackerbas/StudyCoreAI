@@ -27,7 +27,7 @@ const ChangelogPopup = () => {
         {
             icon: <Sparkles size={18} color="#818cf8"/>,
             title: 'Full Website Translation & RTL Support',
-            desc: 'StudyCore AI now natively supports English, Arabic, and Turkish! Arabic includes full Right-to-Left (RTL) layout switching.'
+            desc: 'Teacher Assist now natively supports English, Arabic, and Turkish! Arabic includes full Right-to-Left (RTL) layout switching.'
         },
         {
             icon: <BookOpen size={18} color="#fbbf24"/>,

@@ -234,8 +234,8 @@ const StudyPlanView = () => {
                         </h3>
                         <p style={{ color:'var(--text-muted)', fontSize:'0.85rem', maxWidth:400, margin:'0 auto' }}>
                             {planType === PLAN_TYPE_WEEKLY
-                                ? 'Hit "Generate Plan" above and StudyCore AI will build you a focused 5-day study schedule.'
-                                : 'Hit "Generate Worksheet" and StudyCore AI will read your recent chats to find weak spots and write a targeted guide.'}
+                                ? 'Hit "Generate Plan" above and Teacher Assist will build you a focused 5-day study schedule.'
+                                : 'Hit "Generate Worksheet" and Teacher Assist will read your recent chats to find weak spots and write a targeted guide.'}
                         </p>
                     </div>
                 )}

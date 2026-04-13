@@ -34,7 +34,7 @@ const Login = () => {
                 <div style={{ textAlign:'center',marginBottom:30 }}>
                     <div style={{ width:50,height:50,borderRadius:13,background:'linear-gradient(135deg,#4f46e5,#7c3aed)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',boxShadow:'0 0 26px rgba(99,102,241,0.4)' }}><BookOpen size={22} color="white"/></div>
                     <h1 style={{ fontSize:'1.45rem',fontWeight:800,letterSpacing:'-0.03em',marginBottom:5 }}>Welcome back</h1>
-                    <p style={{ color:'var(--text-muted)',fontSize:'0.85rem' }}>Sign in to your StudyCore account</p>
+                    <p style={{ color:'var(--text-muted)',fontSize:'0.85rem' }}>Sign in to your Teacher Assist account</p>
                 </div>
 
                 {error && <div style={{ marginBottom:18,padding:'11px 14px',borderRadius:10,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',color:'#f87171',fontSize:'0.83rem',textAlign:'center' }}>{error}</div>}

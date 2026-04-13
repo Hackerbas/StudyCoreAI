@@ -9,7 +9,7 @@ import { useAuth } from './contexts/AuthContext';
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Loading StudyCore...</div>;
+  if (loading) return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Loading Teacher Assist...</div>;
   if (!user) return <Navigate to="/login" />;
 
   return children;

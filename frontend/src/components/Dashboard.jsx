@@ -144,7 +144,7 @@ const Dashboard = () => {
                             <div style={{ width:42, height:42, borderRadius:10, background:'#1e293b', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', border:'1px solid rgba(255,255,255,0.05)' }}>
                                 <img src="/favicon.png" alt="Logo" style={{ width:'80%', height:'80%', objectFit:'contain' }}/>
                             </div>
-                            <span style={{ fontWeight:700, fontSize:'1.2rem', color:'#f1f5f9', whiteSpace:'nowrap', letterSpacing:'-0.02em' }}>StudyCore</span>
+                            <span style={{ fontWeight:700, fontSize:'1.2rem', color:'#f1f5f9', whiteSpace:'nowrap', letterSpacing:'-0.02em' }}>Teacher Assist</span>
                         </div>
                     )}
                     <button
