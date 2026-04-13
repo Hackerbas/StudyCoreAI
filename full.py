@@ -458,17 +458,41 @@ def chat():
                     pdf_bytes = urllib.request.urlopen(signed['signedURL']).read()
                     page_data = extract_pages_from_pdf(io.BytesIO(pdf_bytes))
 
-                    # Find the best matching page
-                    keywords = [k for k in query.lower().split() if len(k) > 3]
+                    # ── Smart page search: phrase match first, keyword count fallback ──
+                    q_lower = query.lower()
+                    keywords = [k for k in q_lower.split() if len(k) > 3]
+
+                    # Build candidate phrases (3-word, then 2-word windows) from query
+                    words = q_lower.split()
+                    phrases = []
+                    for n in (4, 3, 2):
+                        for i in range(len(words) - n + 1):
+                            phrase = ' '.join(words[i:i+n])
+                            if len(phrase) > 6:
+                                phrases.append(phrase)
+
                     best_page = None
                     best_hits = 0
-                    for pd_item in page_data:
-                        t = pd_item['text'].lower()
-                        hits = sum(1 for k in keywords if k in t)
-                        if hits > best_hits:
-                            best_hits = hits
-                            best_page = pd_item['page']
-                    if best_page and best_hits > 0:
+
+                    # Pass 1: exact phrase match (prefer longer phrases)
+                    for phrase in phrases:
+                        for pd_item in page_data:
+                            if phrase in pd_item['text'].lower():
+                                best_page = pd_item['page']
+                                break
+                        if best_page:
+                            break
+
+                    # Pass 2: keyword frequency fallback
+                    if not best_page:
+                        for pd_item in page_data:
+                            t = pd_item['text'].lower()
+                            hits = sum(1 for k in keywords if k in t)
+                            if hits > best_hits:
+                                best_hits = hits
+                                best_page = pd_item['page']
+
+                    if best_page:
                         found_page = best_page
 
                     # Build context from this book only
