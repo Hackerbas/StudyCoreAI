@@ -64,19 +64,6 @@ const LandingPage = () => {
             </section>
 
 
-
-            {/* CTA */}
-            <section style={{ margin:'0 40px 70px',borderRadius:22,background:'linear-gradient(135deg,rgba(79,70,229,0.14),rgba(124,58,237,0.09))',border:'1px solid rgba(99,102,241,0.2)',padding:'52px 40px',textAlign:'center' }}>
-                <h2 style={{ fontSize:'1.8rem',fontWeight:800,letterSpacing:'-0.03em',marginBottom:10 }}>Ready to transform how you study?</h2>
-                <p style={{ color:'var(--text-secondary)',marginBottom:28,fontSize:'0.95rem' }}>Create a free account or jump in as a guest — no commitment needed.</p>
-                <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
-                    <button onClick={()=>navigate('/register')} className="btn-gradient" style={{ padding:'13px 36px',fontSize:'0.95rem' }}>Create Free Account</button>
-                    <button onClick={handleGuest} style={{ padding:'13px 28px',fontSize:'0.95rem',fontWeight:600,borderRadius:12,border:'1px solid var(--border)',background:'transparent',color:'var(--text-secondary)',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:7 }}
-                    onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-secondary)'}
-                    ><User size={15}/> Browse as Guest</button>
-                </div>
-            </section>
-
             <footer style={{ textAlign:'center',padding:'20px',borderTop:'1px solid var(--border)',color:'var(--text-muted)',fontSize:'0.78rem' }}>
                 © 2026 Teacher Assist — Source-locked learning powered by AI.
             </footer>
