@@ -69,7 +69,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0f19' }}>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '32px 0 0 0' : '32px 0', display: 'flex', flexDirection: 'column', gap: 20, position: 'relative', zIndex: 1 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '24px 0 0 0' : '24px 0', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', zIndex: 1 }}>
                 {isChatEmpty ? (
                     <div className="animate-fade-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingBottom: '10vh' }}>
                         <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 32 }}>{t('what_working_on')}</h1>
@@ -95,18 +95,18 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                         </div>
                     </div>
                 ) : (
-                <div style={{ maxWidth: 900, width: '100%', margin: '0 auto', paddingInline: 32, display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ maxWidth: 900, width: '100%', margin: '0 auto', paddingInline: 32, display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {chatMessages.map((msg, idx) => (
                         <div key={idx} className="animate-fade-up" style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                             <div style={{ display: 'flex', gap: 14, maxWidth: msg.role === 'user' ? '75%' : '92%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
                                 <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.role === 'user' ? '#334155' : 'transparent', border: msg.role === 'assistant' ? '1px solid rgba(255,255,255,0.1)' : 'none', marginTop: 4 }}>
                                     {msg.role === 'user' ? <User size={14} color="#f8fafc" /> : <Bot size={16} color="#818cf8" />}
                                 </div>
-                                <div style={{ padding: msg.role === 'user' ? '12px 18px' : '14px 18px 14px 0', borderRadius: 16, background: msg.role === 'user' ? '#1e293b' : 'transparent' }}>
+                                <div style={{ padding: msg.role === 'user' ? '10px 16px' : '6px 0', borderRadius: 14, background: msg.role === 'user' ? '#1e293b' : 'transparent' }}>
                                     {msg.role === 'user' ? (
-                                        <p style={{ color: '#f8fafc', fontSize: '1rem', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
+                                        <p style={{ color: '#f8fafc', fontSize: '0.9rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
                                     ) : (
-                                        <div style={{ color: 'var(--text-primary)', fontSize: '1rem', lineHeight: 1.8, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
+                                        <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.65, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
                                             <ReactMarkdown>{msg.content}</ReactMarkdown>
                                         </div>
                                     )}
