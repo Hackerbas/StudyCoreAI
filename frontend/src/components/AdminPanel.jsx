@@ -310,23 +310,16 @@ const UsersTab = ({ users, onRefresh, showToast }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: LIBRARY
 // ────────────────────────────────────────────────────────────────────────────────
-const LibraryTab = ({ showToast }) => {
-    const [books, setBooks] = useState([]);
-    const [loading, setLoading] = useState(true);
+const LibraryTab = ({ books, setBooks, showToast }) => {
+    const [loading] = useState(false);
     const [search, setSearch] = useState('');
     const [deleteTarget, setDeleteTarget] = useState(null);
 
-    const load = async () => {
-        setLoading(true);
-        try { const r=await fetch('/api/admin/books'); if(r.ok){const d=await r.json();setBooks(d.books||[]);} } catch{}
-        finally { setLoading(false); }
-    };
-    useEffect(()=>{load();},[]);
-
     const doDelete = async () => {
         const r = await fetch(`/api/admin/books/${deleteTarget.id}`,{method:'DELETE'});
+        const target = deleteTarget;
         setDeleteTarget(null);
-        if(r.ok){showToast(`"${deleteTarget.title||deleteTarget.filename}" deleted.`);load();}else showToast('Delete failed.',false);
+        if(r.ok){showToast(`"${target.title||target.filename}" deleted.`);setBooks(prev=>prev.filter(b=>b.id!==target.id));}else showToast('Delete failed.',false);
     };
 
     const filtered = books.filter(b=>(b.title||b.filename||'').toLowerCase().includes(search.toLowerCase())||(b.subject||'').toLowerCase().includes(search.toLowerCase()));
@@ -443,15 +436,8 @@ const LogsTab = ({ logs }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: ADMIN TOOLS
 // ────────────────────────────────────────────────────────────────────────────────
-const AdminToolsTab = ({ currentUser, showToast, onRefresh }) => {
-    const [showCreate, setShowCreate] = useState(false);
+const AdminToolsTab = ({ currentUser }) => {
     const now = useClock();
-    const doCreate = async ({ username, password }) => {
-        const r = await fetch('/api/admin/create_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-        const d = await r.json();
-        setShowCreate(false);
-        if(r.ok){showToast(`Admin "${username}" created!`);onRefresh();}else showToast(d.error||'Create failed.',false);
-    };
     const infoRow = (label, val) => (
         <div style={{ padding:'12px 16px', borderRadius:12, background:'rgba(0,0,0,0.2)', border:'1px solid rgba(255,255,255,0.04)' }}>
             <div style={{ fontSize:'0.68rem', color:'#475569', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>{label}</div>
@@ -460,8 +446,6 @@ const AdminToolsTab = ({ currentUser, showToast, onRefresh }) => {
     );
     return (
         <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-            {showCreate && <CreateAdminModal onSubmit={doCreate} onClose={()=>setShowCreate(false)}/>}
-
             {/* Session block */}
             <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:16 }}>Active Session</div>
@@ -471,15 +455,6 @@ const AdminToolsTab = ({ currentUser, showToast, onRefresh }) => {
                     {infoRow('Auth Level', 'OMEGA — Full Control')}
                     {infoRow('Local Time', now.toLocaleTimeString())}
                 </div>
-            </div>
-
-            {/* Create Admin block */}
-            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Admin Management</div>
-                <p style={{ color:'#64748b', fontSize:'0.84rem', marginBottom:16 }}>Create a new admin account. Admins have full platform access.</p>
-                <button onClick={()=>setShowCreate(true)} style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 20px', borderRadius:12, border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.12)', color:'#818cf8', cursor:'pointer', fontWeight:700, fontSize:'0.88rem', fontFamily:'inherit', transition:'all 0.2s' }}>
-                    <UserPlus size={15}/> Create Admin Account
-                </button>
             </div>
 
             {/* Danger Zone */}
@@ -495,6 +470,7 @@ const AdminToolsTab = ({ currentUser, showToast, onRefresh }) => {
         </div>
     );
 };
+
 
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: EXPORT
@@ -561,6 +537,7 @@ const AdminPanel = () => {
     const [stats, setStats] = useState({ users:0, books:0, logs:0, saved_quizzes:0, role_breakdown:{} });
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
+    const [books, setBooks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [toasts, showToast] = useToast();
     const now = useClock();
@@ -568,14 +545,16 @@ const AdminPanel = () => {
     const fetchAll = async () => {
         setLoading(true);
         try {
-            const [sr, ur, lr] = await Promise.all([
+            const [sr, ur, lr, br] = await Promise.all([
                 fetch('/api/admin/stats'),
                 fetch('/api/admin/users'),
                 fetch('/api/admin/logs'),
+                fetch('/api/admin/books'),
             ]);
             if(sr.ok) setStats(await sr.json());
             if(ur.ok) setUsers((await ur.json()).users||[]);
             if(lr.ok) setLogs((await lr.json()).logs||[]);
+            if(br.ok) setBooks((await br.json()).books||[]);
         } catch { showToast('Data fetch failed.', false); }
         finally { setLoading(false); }
     };
@@ -656,9 +635,9 @@ const AdminPanel = () => {
                         <div className="animate-fade-up">
                             {tab==='overview' && <OverviewTab stats={stats} logs={logs}/>}
                             {tab==='users'    && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast}/>}
-                            {tab==='library'  && <LibraryTab showToast={showToast}/>}
+                            {tab==='library'  && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
                             {tab==='logs'     && <LogsTab logs={logs}/>}
-                            {tab==='tools'    && <AdminToolsTab currentUser={user} showToast={showToast} onRefresh={fetchAll}/>}
+                            {tab==='tools'    && <AdminToolsTab currentUser={user}/>}
                             {tab==='export'   && <ExportTab users={users} logs={logs} books={books}/>}
                         </div>
                     )}
