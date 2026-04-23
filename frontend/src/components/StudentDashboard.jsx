@@ -69,11 +69,11 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden', background: '#0b0f19' }}>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '24px 0 0 0' : '24px 0', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: isChatEmpty ? '32px 0 0 0' : '32px 0', display: 'flex', flexDirection: 'column', gap: 20, position: 'relative', zIndex: 1 }}>
                 {isChatEmpty ? (
                     <div className="animate-fade-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingBottom: '10vh' }}>
                         <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', marginBottom: 32 }}>{t('what_working_on')}</h1>
-                        <div style={{ width: '100%', maxWidth: 760, paddingInline: 28, boxSizing: 'border-box' }}>
+                        <div style={{ width: '100%', maxWidth: 900, paddingInline: 32, boxSizing: 'border-box' }}>
                             <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#1e293b', borderRadius: 24, padding: '12px 12px 12px 20px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)' }}>
                                 <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={t('ask_anything')} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '1.05rem', fontFamily: 'inherit' }} />
                                 <button type="submit" disabled={!input.trim() || loading} style={{ width: 42, height: 42, borderRadius: '50%', background: input.trim() ? '#e2e8f0' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', padding: 0 }}>
@@ -95,18 +95,18 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                         </div>
                     </div>
                 ) : (
-                <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', paddingInline: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ maxWidth: 900, width: '100%', margin: '0 auto', paddingInline: 32, display: 'flex', flexDirection: 'column', gap: 24 }}>
                     {chatMessages.map((msg, idx) => (
                         <div key={idx} className="animate-fade-up" style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                            <div style={{ display: 'flex', gap: 12, maxWidth: '85%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                            <div style={{ display: 'flex', gap: 14, maxWidth: msg.role === 'user' ? '75%' : '92%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
                                 <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: msg.role === 'user' ? '#334155' : 'transparent', border: msg.role === 'assistant' ? '1px solid rgba(255,255,255,0.1)' : 'none', marginTop: 4 }}>
                                     {msg.role === 'user' ? <User size={14} color="#f8fafc" /> : <Bot size={16} color="#818cf8" />}
                                 </div>
-                                <div style={{ padding: msg.role === 'user' ? '12px 18px' : '4px 0', borderRadius: 16, background: msg.role === 'user' ? '#1e293b' : 'transparent' }}>
+                                <div style={{ padding: msg.role === 'user' ? '12px 18px' : '14px 18px 14px 0', borderRadius: 16, background: msg.role === 'user' ? '#1e293b' : 'transparent' }}>
                                     {msg.role === 'user' ? (
-                                        <p style={{ color: '#f8fafc', fontSize: '0.95rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
+                                        <p style={{ color: '#f8fafc', fontSize: '1rem', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{msg.content}</p>
                                     ) : (
-                                        <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: 1.6, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
+                                        <div style={{ color: 'var(--text-primary)', fontSize: '1rem', lineHeight: 1.8, wordBreak: 'break-word', margin: 0 }} className="markdown-body">
                                             <ReactMarkdown>{msg.content}</ReactMarkdown>
                                         </div>
                                     )}
@@ -131,7 +131,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
             {!isChatEmpty && (
             <div style={{ flexShrink: 0, position: 'relative', zIndex: 1 }}>
                 {/* Explanation level + chips row */}
-                <div style={{ maxWidth: 760, margin: '0 auto', paddingInline: 28, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ maxWidth: 900, margin: '0 auto', paddingInline: 32, paddingBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     
                     {/* Model selector dropdown */}
                     <div style={{ position: 'relative' }}>
@@ -184,7 +184,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                     </select>
                 </div>
 
-                <div style={{ padding: '12px 28px 24px', maxWidth: 760, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+                <div style={{ padding: '12px 32px 24px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
                     <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: '#1e293b', borderRadius: 16, padding: '8px 8px 8px 16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)' }}>
                         <textarea 
                             value={input} 
