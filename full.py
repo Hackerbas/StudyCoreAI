@@ -1018,13 +1018,20 @@ Use markdown formatting (headers, bullet points). Do not make up outside informa
 @require_admin
 def admin_stats():
     try:
-        users = supabase.table('users').select('id', count='exact').execute()
-        books = supabase.table('books').select('id', count='exact').execute()
-        logs  = supabase.table('activity_logs').select('id', count='exact').execute()
+        users_res  = supabase.table('users').select('role').execute()
+        books_res  = supabase.table('books').select('id', count='exact').execute()
+        logs_res   = supabase.table('activity_logs').select('id', count='exact').execute()
+        quizzes_res = supabase.table('saved_quizzes').select('id', count='exact').execute()
+        role_breakdown = {}
+        for u in (users_res.data or []):
+            r = u.get('role', 'Student')
+            role_breakdown[r] = role_breakdown.get(r, 0) + 1
         return jsonify({
-            'users': users.count or 0,
-            'books': books.count or 0,
-            'logs': logs.count or 0
+            'users': len(users_res.data or []),
+            'books': books_res.count or 0,
+            'logs':  logs_res.count or 0,
+            'saved_quizzes': quizzes_res.count or 0,
+            'role_breakdown': role_breakdown,
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1080,11 +1087,49 @@ def admin_delete_user(user_id):
 def admin_logs():
     filter_role = request.args.get('role')
     try:
-        q = supabase.table('activity_logs').select('*').order('created_at', desc=True).limit(200)
+        q = supabase.table('activity_logs').select('*').order('created_at', desc=True).limit(500)
         if filter_role and filter_role != 'All':
             q = q.eq('role', filter_role)
         res = q.execute()
         return jsonify({'logs': res.data}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/books', methods=['GET'])
+@require_admin
+def admin_books():
+    try:
+        res = supabase.table('books').select('id,filename,title,subject,author,year,description,min_grade,max_grade').order('id', desc=True).execute()
+        return jsonify({'books': res.data}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/books/<int:book_id>', methods=['DELETE'])
+@require_admin
+def admin_delete_book(book_id):
+    try:
+        row = supabase.table('books').select('filename').eq('id', book_id).execute()
+        if not row.data:
+            return jsonify({'error': 'Book not found'}), 404
+        filename = row.data[0]['filename']
+        try:
+            supabase.storage.from_('pdfs').remove([filename])
+        except Exception:
+            pass
+        supabase.table('books').delete().eq('id', book_id).execute()
+        log_action('Admin Deleted Book', f'Book ID {book_id}: {filename}')
+        return jsonify({'message': 'Book deleted'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/users/<string:user_id>/grade', methods=['PUT'])
+@require_admin
+def admin_set_grade(user_id):
+    grade = request.json.get('grade_level')
+    try:
+        supabase.table('users').update({'grade_level': grade}).eq('id', user_id).execute()
+        log_action('Set Grade', f'Set grade_level={grade} for user {user_id}')
+        return jsonify({'message': 'Grade updated'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
