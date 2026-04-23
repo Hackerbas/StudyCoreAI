@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
     ShieldCheck, Users, BookOpen, Terminal, Settings, Download,
-    LogOut, RefreshCw, Search, Trash2, KeyRound, X, Check,
+    LogOut, RefreshCw, Search, Trash2, KeyRound, Plus, X, Check,
     ChevronLeft, ChevronRight, Eye, EyeOff, BarChart2, Database,
-    Zap, FileText, AlertTriangle, GraduationCap, Clock
+    Zap, FileText, AlertTriangle, GraduationCap, UserPlus, Clock
 } from 'lucide-react';
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
@@ -99,6 +99,34 @@ const GradeModal = ({ username, currentGrade, onSubmit, onClose }) => {
     );
 };
 
+// ── Create Admin Modal ────────────────────────────────────────────────────────
+const CreateAdminModal = ({ onSubmit, onClose }) => {
+    const [form, setForm] = useState({ username:'', password:'' });
+    const [show, setShow] = useState(false);
+    const [err, setErr] = useState('');
+    const submit = () => {
+        if (!form.username.trim()) { setErr('Username required.'); return; }
+        if (form.password.length < 6) { setErr('Password min 6 chars.'); return; }
+        onSubmit(form);
+    };
+    const field = (key, placeholder, type='text') => (
+        <input autoFocus={key==='username'} type={key==='password'?(show?'text':'password'):type} value={form[key]} onChange={e=>{setForm(p=>({...p,[key]:e.target.value}));setErr('');}} onKeyDown={e=>e.key==='Enter'&&submit()} placeholder={placeholder} style={{ width:'100%', padding:'10px 14px', borderRadius:10, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', color:'#f1f5f9', fontSize:'0.88rem', outline:'none', boxSizing:'border-box', fontFamily:'inherit', marginBottom:12 }}/>
+    );
+    return (
+        <Modal title="Create Admin Account" onClose={onClose}>
+            {field('username','Admin username...')}
+            <div style={{ position:'relative' }}>
+                {field('password','Password...')}
+                <button onClick={()=>setShow(s=>!s)} style={{ position:'absolute', right:12, top:10, background:'transparent', border:'none', color:'#64748b', cursor:'pointer', display:'flex' }}>{show?<EyeOff size={15}/>:<Eye size={15}/>}</button>
+            </div>
+            {err && <p style={{ color:'#f87171', fontSize:'0.78rem', marginBottom:10 }}>{err}</p>}
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                <button onClick={onClose} style={cancelBtn}>Cancel</button>
+                <button onClick={submit} style={{ ...modalBtnBase, border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>Create Admin</button>
+            </div>
+        </Modal>
+    );
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ROLE_C = {
@@ -540,7 +568,6 @@ const AdminPanel = () => {
     );
 
     const tabTitles = { overview:'Overview', users:'User Management', library:'Library Control', logs:'Activity Logs', tools:'Admin Tools', export:'Export & Reports' };
-
 
     return (
         <div style={{ display:'flex', height:'100vh', background:'#060913', color:'#f8fafc', fontFamily:'"Inter",sans-serif', overflow:'hidden' }}>
