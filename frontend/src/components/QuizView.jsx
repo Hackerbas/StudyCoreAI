@@ -351,7 +351,7 @@ const QuizTab = ({ subjects, showToast, onLoadSaved }) => {
 };
 
 // ─── Flashcard Tab ────────────────────────────────────────────────────────────
-const FlashcardTab = ({ subject, showToast, onLoadSaved }) => {
+const FlashcardTab = ({ subjects = ['All'], showToast, onLoadSaved }) => {
     const [cards,   setCards]   = useState([]);
     const [loading, setLoading] = useState(false);
     const [error,   setError]   = useState(null);
@@ -360,6 +360,7 @@ const FlashcardTab = ({ subject, showToast, onLoadSaved }) => {
     const [done,    setDone]    = useState(false);
     const [showSave, setShowSave] = useState(false);
     const [saved,    setSaved]    = useState(false);
+    const [subject,  setSubject]  = useState('All');
 
     useEffect(() => {
         if (onLoadSaved) onLoadSaved.current = (cs) => {
@@ -385,8 +386,17 @@ const FlashcardTab = ({ subject, showToast, onLoadSaved }) => {
     return (
         <div style={{ display:'flex', flexDirection:'column', flex:1 }}>
             {showSave && <SaveDialog type="flashcard" data={cards} onSaved={() => { setShowSave(false); setSaved(true); showToast('Flashcard set saved!'); }} onCancel={() => setShowSave(false)}/>}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12, padding:'0 4px' }}>
-                <p style={{ color:'var(--text-secondary)', fontSize:'0.86rem' }}>Flip-card study from your library. Tap the card to reveal.</p>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:12, padding:'0 4px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                    <p style={{ color:'var(--text-secondary)', fontSize:'0.86rem' }}>Flip-card study from your library. Tap the card to reveal.</p>
+                    <select
+                        value={subject}
+                        onChange={e => setSubject(e.target.value)}
+                        style={{ background:'rgba(255,255,255,0.06)', border:'1px solid var(--border)', borderRadius:10, padding:'7px 13px', color:'var(--text-primary)', fontSize:'0.85rem', fontWeight:600, cursor:'pointer', fontFamily:'inherit', outline:'none' }}
+                    >
+                        {subjects.map(s => <option key={s} value={s} style={{ background:'#1e293b', color:'#f8fafc' }}>{s === 'All' ? '📚 All Subjects' : s}</option>)}
+                    </select>
+                </div>
                 <button onClick={generate} className="btn-gradient" style={{ padding:'10px 22px', fontSize:'0.88rem', display:'flex', alignItems:'center', gap:7 }}><Layers size={15}/> {cards.length>0?'New Set':'Generate Cards'}</button>
             </div>
             {loading && <div style={{ textAlign:'center', padding:'60px 0' }}><div className="spin" style={{ width:40,height:40,border:'3px solid rgba(99,102,241,0.2)',borderTopColor:'#6366f1',borderRadius:'50%',margin:'0 auto 14px' }}/><p style={{ color:'var(--text-secondary)' }}>Generating flashcards…</p></div>}
@@ -680,7 +690,7 @@ const QuizView = ({ user }) => {
                             {tab==='quiz'  && <QuizTab subjects={subjects} showToast={showToast} onLoadSaved={loadQuizRef}/>}
                             {tab==='flash' && (
                                 <div style={{ maxWidth:760, margin:'0 auto', padding:'24px 28px', width:'100%', display:'flex', flexDirection:'column', flex:1 }}>
-                                    <FlashcardTab subject="All" showToast={showToast} onLoadSaved={loadFlashcardRef}/>
+                                    <FlashcardTab subjects={subjects} showToast={showToast} onLoadSaved={loadFlashcardRef}/>
                                 </div>
                             )}
                             {tab==='saved' && (

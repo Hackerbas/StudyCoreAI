@@ -30,6 +30,14 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
     const [books, setBooks] = useState([]);
     const [selectedBookId, setSelectedBookId] = useState(null);
     const bottomRef = useRef(null);
+    const textareaRef = useRef(null);
+
+    const autoResize = () => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    };
 
     useEffect(() => {
         fetch('/api/library').then(r=>r.json()).then(d=>{ if(d.books) setBooks(d.books); }).catch(()=>{});
@@ -43,7 +51,12 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
         
         const newMsgList = [...chatMessages, { role: 'user', content: query }];
         setChatMessages(newMsgList);
-        setInput(''); setLoading(true);
+        setInput('');
+        // Reset textarea height
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+        setLoading(true);
         trackEvent('question_asked');
         
         try {
@@ -187,8 +200,9 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                 <div style={{ padding: '12px 32px 24px', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
                     <form onSubmit={e => { e.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: '#1e293b', borderRadius: 16, padding: '8px 8px 8px 16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)' }}>
                         <textarea 
+                            ref={textareaRef}
                             value={input} 
-                            onChange={e => setInput(e.target.value)} 
+                            onChange={e => { setInput(e.target.value); autoResize(); }} 
                             onKeyDown={e => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
@@ -196,7 +210,7 @@ const StudentDashboard = ({ chatMessages = [], setChatMessages, createNewChat })
                                 }
                             }}
                             placeholder={t('ask_anything')} 
-                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '0.95rem', fontFamily: 'inherit', resize: 'none', minHeight: '24px', maxHeight: '200px', padding: '6px 0', lineHeight: 1.5 }} 
+                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f1f5f9', fontSize: '0.9rem', fontFamily: 'inherit', resize: 'none', height: '24px', maxHeight: '200px', padding: '6px 0', lineHeight: 1.5, overflowY: 'auto' }} 
                             rows={1}
                         />
                         <button type="submit" disabled={!input.trim() || loading} style={{ width: 36, height: 36, borderRadius: '50%', background: input.trim() ? '#e2e8f0' : '#334155', color: input.trim() ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s', padding: 0 }}>
