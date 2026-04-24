@@ -89,12 +89,12 @@ def groq_chat_with_rotation(messages, model='llama-3.3-70b-versatile', response_
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def extract_text_from_pdf(file_stream, max_pages=15):
+def extract_text_from_pdf(file_stream):
+    """Extract ALL pages from a PDF — no page limit."""
     try:
         reader = PdfReader(file_stream)
         text = ""
-        for i, page in enumerate(reader.pages):
-            if i >= max_pages: break
+        for page in reader.pages:
             extracted = page.extract_text()
             if extracted:
                 text += extracted + "\n"
@@ -495,22 +495,10 @@ def chat():
                     if best_page:
                         found_page = best_page
 
-                    # Build context from this book only
+                    # Build context from this book only — send as much as possible
                     full_text = "\n".join(p['text'] for p in page_data)
-                    keywords_q = query.lower().split()
                     context = f"Document: {book_row['filename']}\n\n"
-                    match_found = False
-                    for k in keywords_q:
-                        if len(k) <= 3: continue
-                        idx = full_text.lower().find(k)
-                        if idx != -1:
-                            start = max(0, idx - 1000)
-                            end = min(len(full_text), idx + 2500)
-                            context += full_text[start:end]
-                            match_found = True
-                            break
-                    if not match_found:
-                        context += full_text[:4000]
+                    context += full_text[:80000]
             except Exception as pe:
                 print(f"Per-page search failed, falling back: {pe}")
                 book_id = None  # fall through to generic search
@@ -535,12 +523,12 @@ def chat():
                             if len(k) <= 3: continue
                             idx = text.lower().find(k)
                             if idx != -1:
-                                start = max(0, idx - 1000)
-                                end = min(len(text), idx + 2000)
+                                start = max(0, idx - 2000)
+                                end = min(len(text), idx + 5000)
                                 context += f"--- Snippet from {book['filename']} ---\n{text[start:end]}\n\n"
                                 match_found = True
                                 break
-                    if len(context) > 12000:
+                    if len(context) > 50000:
                         break
 
                 meta_keywords = ["summary", "overview", "about", "topic", "explain", "what is"]
@@ -548,9 +536,9 @@ def chat():
                 if not match_found or is_meta_query:
                     for book in all_books:
                         if f"Snippet from {book['filename']}" not in context:
-                            text_snippet = (book['content'] or "")[:1500]
+                            text_snippet = (book['content'] or "")[:5000]
                             context += f"--- Beginning of {book['filename']} ---\n{text_snippet}\n...\n\n"
-                        if len(context) > 15000: break
+                        if len(context) > 50000: break
 
         # Construct Insane System Prompt Based on Mode
         if mode == 'simple':
@@ -660,9 +648,9 @@ def quiz():
 
         context = ""
         for book in all_books:
-            text_snippet = (book['content'] or '')[:3000]
+            text_snippet = (book['content'] or '')[:12000]
             context += f"--- From {book['filename']} ---\n{text_snippet}\n\n"
-            if len(context) > 12000:
+            if len(context) > 60000:
                 break
 
         chat_completion = groq_chat_with_rotation(
@@ -715,8 +703,8 @@ def flashcards():
             return jsonify({'error': 'No books in library to generate flashcards from.'}), 400
         context = ""
         for book in all_books:
-            context += f"--- From {book['filename']} ---\n{(book['content'] or '')[:2500]}\n\n"
-            if len(context) > 10000:
+            context += f"--- From {book['filename']} ---\n{(book['content'] or '')[:10000]}\n\n"
+            if len(context) > 50000:
                 break
         chat_completion = groq_chat_with_rotation(
             temperature=0.1,
@@ -975,8 +963,8 @@ def srs_worksheet():
         # Build context from books
         context = ""
         for book in all_books:
-            context += f"--- From {book['filename']} ---\n{(book['content'] or '')[:4000]}\n\n"
-            if len(context) > 15000:
+            context += f"--- From {book['filename']} ---\n{(book['content'] or '')[:12000]}\n\n"
+            if len(context) > 60000:
                 break
 
         # Format chat history
@@ -1151,6 +1139,43 @@ def admin_create_admin():
         log_action('Created Admin', f'Created new admin: {username}')
         return jsonify({'message': f'Admin {username} created'}), 201
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/reindex', methods=['POST'])
+@require_admin
+def admin_reindex():
+    """Re-download every PDF from Supabase Storage and re-extract ALL text (no page limit)."""
+    try:
+        rows = supabase.table('books').select('id, filename').execute()
+        if not rows.data:
+            return jsonify({'message': 'No books to re-index.', 'updated': 0}), 200
+
+        updated = 0
+        errors = []
+        for book in rows.data:
+            try:
+                signed = supabase.storage.from_('pdfs').create_signed_url(book['filename'], 300)
+                import urllib.request
+                pdf_bytes = urllib.request.urlopen(signed['signedURL']).read()
+                new_content = extract_text_from_pdf(io.BytesIO(pdf_bytes))
+                supabase.table('books').update({'content': new_content}).eq('id', book['id']).execute()
+                updated += 1
+            except Exception as be:
+                errors.append(f"{book['filename']}: {str(be)}")
+                print(f"[reindex] Failed for {book['filename']}: {be}")
+
+        if redis_client:
+            redis_client.delete("library_books")
+
+        log_action('Re-Indexed Library', f'Updated {updated}/{len(rows.data)} books')
+        return jsonify({
+            'message': f'Re-indexed {updated}/{len(rows.data)} books.',
+            'updated': updated,
+            'total': len(rows.data),
+            'errors': errors,
+        }), 200
+    except Exception as e:
+        print(f"[admin_reindex] {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/')

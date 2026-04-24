@@ -436,8 +436,30 @@ const LogsTab = ({ logs }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: ADMIN TOOLS
 // ────────────────────────────────────────────────────────────────────────────────
-const AdminToolsTab = ({ currentUser }) => {
+const AdminToolsTab = ({ currentUser, showToast }) => {
     const now = useClock();
+    const [reindexing, setReindexing] = useState(false);
+    const [reindexResult, setReindexResult] = useState(null);
+
+    const doReindex = async () => {
+        setReindexing(true);
+        setReindexResult(null);
+        try {
+            const res = await fetch('/api/admin/reindex', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                setReindexResult(data);
+                showToast(`Re-indexed ${data.updated}/${data.total} books!`);
+            } else {
+                showToast(data.error || 'Re-index failed.', false);
+            }
+        } catch {
+            showToast('Network error during re-index.', false);
+        } finally {
+            setReindexing(false);
+        }
+    };
+
     const infoRow = (label, val) => (
         <div style={{ padding:'12px 16px', borderRadius:12, background:'rgba(0,0,0,0.2)', border:'1px solid rgba(255,255,255,0.04)' }}>
             <div style={{ fontSize:'0.68rem', color:'#475569', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>{label}</div>
@@ -455,6 +477,31 @@ const AdminToolsTab = ({ currentUser }) => {
                     {infoRow('Auth Level', 'OMEGA — Full Control')}
                     {infoRow('Local Time', now.toLocaleTimeString())}
                 </div>
+            </div>
+
+            {/* Re-Index Library */}
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(52,211,153,0.04)', border:'1px solid rgba(52,211,153,0.15)' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                    <Database size={16} color="#34d399"/>
+                    <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#34d399', textTransform:'uppercase', letterSpacing:'0.08em' }}>Library Re-Index</div>
+                </div>
+                <p style={{ color:'#64748b', fontSize:'0.84rem', lineHeight:1.6, marginBottom:16 }}>
+                    Re-download every PDF from storage and re-extract <strong style={{ color:'#34d399' }}>ALL</strong> pages of text. Use this after upgrading to remove the old 15-page extraction limit so the AI can access full book content.
+                </p>
+                <button onClick={doReindex} disabled={reindexing} style={{ padding:'10px 22px', borderRadius:12, border:'1px solid rgba(52,211,153,0.35)', background:'rgba(52,211,153,0.12)', color:'#34d399', cursor:reindexing?'not-allowed':'pointer', fontWeight:700, fontSize:'0.84rem', fontFamily:'inherit', display:'flex', alignItems:'center', gap:8, transition:'all 0.2s' }}>
+                    {reindexing ? <><RefreshCw size={14} className="spin"/> Re-Indexing… This may take a while</> : <><RefreshCw size={14}/> Re-Index All Books</>}
+                </button>
+                {reindexResult && (
+                    <div style={{ marginTop:14, padding:'12px 16px', borderRadius:12, background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.25)' }}>
+                        <p style={{ fontWeight:700, fontSize:'0.84rem', color:'#4ade80', marginBottom:4 }}>✓ {reindexResult.message}</p>
+                        {reindexResult.errors?.length > 0 && (
+                            <div style={{ marginTop:8 }}>
+                                <p style={{ fontSize:'0.76rem', color:'#f87171', fontWeight:600, marginBottom:4 }}>Errors:</p>
+                                {reindexResult.errors.map((e,i) => <p key={i} style={{ fontSize:'0.72rem', color:'#fca5a5', fontFamily:'monospace' }}>{e}</p>)}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Danger Zone */}
@@ -633,7 +680,7 @@ const AdminPanel = () => {
                             {tab==='users'    && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast}/>}
                             {tab==='library'  && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
                             {tab==='logs'     && <LogsTab logs={logs}/>}
-                            {tab==='tools'    && <AdminToolsTab currentUser={user}/>}
+                            {tab==='tools'    && <AdminToolsTab currentUser={user} showToast={showToast}/>}
                             {tab==='export'   && <ExportTab users={users} logs={logs} books={books}/>}
                         </div>
                     )}
