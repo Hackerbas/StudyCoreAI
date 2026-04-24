@@ -279,22 +279,33 @@ GROQ_KEYS = [
 ]
 
 def groq_chat_with_rotation(messages, model='llama-3.3-70b-versatile', response_format=None, temperature=0.5):
-    """Try each Groq API key in sequence; rotate on rate limit."""
+    """Try each Groq API key, then fall back to lighter models on rate limit."""
+    # Model fallback chain: if primary is exhausted, try progressively lighter models
+    FALLBACK_MODELS = [
+        model,
+        'llama-3.1-8b-instant',
+        'gemma2-9b-it',
+    ]
     last_error = None
-    for key in GROQ_KEYS:
-        try:
-            client = Groq(api_key=key)
-            kwargs = dict(messages=messages, model=model, temperature=temperature)
-            if response_format:
-                kwargs['response_format'] = response_format
-            return client.chat.completions.create(**kwargs)
-        except RateLimitError as e:
-            print(f'Key ...{key[-6:]} rate limited, rotating.')
-            last_error = e
-            continue
-        except Exception as e:
-            raise e  # non-rate-limit errors bubble up
-    raise last_error or Exception('All Groq API keys are exhausted.')
+    for try_model in FALLBACK_MODELS:
+        for key in GROQ_KEYS:
+            try:
+                client = Groq(api_key=key)
+                kwargs = dict(messages=messages, model=try_model, temperature=temperature)
+                if response_format:
+                    kwargs['response_format'] = response_format
+                return client.chat.completions.create(**kwargs)
+            except RateLimitError as e:
+                err_str = str(e)
+                print(f'[groq] Key ...{key[-6:]} rate limited on {try_model}: {err_str[:80]}')
+                last_error = e
+                continue
+            except Exception as e:
+                raise e  # non-rate-limit errors bubble up immediately
+        # All keys exhausted for this model — try next model in fallback chain
+        print(f'[groq] All keys exhausted for {try_model}, trying next fallback model...')
+    raise last_error or Exception('All Groq API keys and fallback models are exhausted.')
+
 
 # --- Helper Functions ---
 
