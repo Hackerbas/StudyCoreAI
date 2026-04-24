@@ -13,28 +13,27 @@ from supabase import create_client, Client
 import redis
 import hashlib
 
-# --- Vector Embedding Model (RAG) ---
-_embed_model = None
+# --- Vector Embeddings via HuggingFace Inference API (lightweight, no heavy deps) ---
+import urllib.request
 
-def _get_embed_model():
-    """Lazy-load the embedding model to avoid slow startup when not needed."""
-    global _embed_model
-    if _embed_model is None:
-        try:
-            from fastembed import TextEmbedding
-            _embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
-            print("\u2713 fastembed model loaded (bge-small-en-v1.5, 384-dim).")
-        except Exception as e:
-            print(f"\u26a0 fastembed not available: {e}")
-    return _embed_model
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/BAAI/bge-small-en-v1.5"
+
+def _hf_embed(texts):
+    """Call HuggingFace free Inference API to embed a list of texts. Returns list of 384-dim lists."""
+    payload = json.dumps({"inputs": texts, "options": {"wait_for_model": True}}).encode('utf-8')
+    req = urllib.request.Request(HF_EMBED_URL, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read().decode('utf-8'))
 
 def get_embedding(text: str):
-    """Return a 384-dim embedding list for a text string."""
-    model = _get_embed_model()
-    if model is None:
-        return None
-    embeddings = list(model.embed([text]))
-    return embeddings[0].tolist()
+    """Return a 384-dim embedding list for a single text string."""
+    try:
+        result = _hf_embed([text])
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+    except Exception as e:
+        print(f"[get_embedding] HF API error: {e}")
+    return None
 
 def chunk_text(text: str, chunk_size=500, overlap=50):
     """Split text into overlapping chunks of ~chunk_size characters."""
@@ -47,12 +46,8 @@ def chunk_text(text: str, chunk_size=500, overlap=50):
     return [c.strip() for c in chunks if c.strip()]
 
 def index_book_chunks(book_id: int, content: str):
-    """Chunk text, embed each chunk, and upsert into book_chunks table."""
+    """Chunk text, embed each chunk via HF API, and store in book_chunks table."""
     if not supabase or not content:
-        return
-    model = _get_embed_model()
-    if model is None:
-        print(f"[index_book_chunks] Skipping book {book_id} — no embed model.")
         return
     try:
         # Delete old chunks for this book (idempotent re-index)
@@ -62,22 +57,27 @@ def index_book_chunks(book_id: int, content: str):
         if not chunks:
             return
 
-        # Batch embed all chunks at once for speed
-        embeddings = list(model.embed(chunks))
+        # Embed in batches of 20 (HF API has payload limits)
+        EMBED_BATCH = 20
+        all_embeddings = []
+        for i in range(0, len(chunks), EMBED_BATCH):
+            batch = chunks[i:i+EMBED_BATCH]
+            embs = _hf_embed(batch)
+            all_embeddings.extend(embs)
 
         rows = []
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+        for i, (chunk, emb) in enumerate(zip(chunks, all_embeddings)):
             rows.append({
                 'book_id': book_id,
                 'chunk_index': i,
                 'content': chunk,
-                'embedding': emb.tolist(),
+                'embedding': emb,
             })
 
-        # Insert in batches of 50 to avoid payload limits
-        BATCH = 50
-        for b in range(0, len(rows), BATCH):
-            supabase.table('book_chunks').insert(rows[b:b+BATCH]).execute()
+        # Insert in batches of 50 to avoid Supabase payload limits
+        DB_BATCH = 50
+        for b in range(0, len(rows), DB_BATCH):
+            supabase.table('book_chunks').insert(rows[b:b+DB_BATCH]).execute()
 
         print(f"[RAG] Indexed {len(rows)} chunks for book_id={book_id}")
     except Exception as e:
