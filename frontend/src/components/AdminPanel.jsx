@@ -213,7 +213,7 @@ const OverviewTab = ({ stats, logs }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: USERS
 // ────────────────────────────────────────────────────────────────────────────────
-const UsersTab = ({ users, onRefresh, showToast }) => {
+const UsersTab = ({ users, onRefresh, showToast, onViewAs }) => {
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('All');
     const [modal, setModal] = useState(null);
@@ -242,6 +242,10 @@ const UsersTab = ({ users, onRefresh, showToast }) => {
         const r = await fetch(`/api/admin/users/${uid}`,{method:'DELETE'});
         setModal(null);
         if(r.ok){showToast(`"${username}" deleted.`);onRefresh();}else showToast('Delete failed.',false);
+    };
+    const doBan = async (u) => {
+        const r = await fetch(`/api/admin/users/${u.id}/ban`,{method:'POST'});
+        if(r.ok){const d=await r.json();showToast(d.message);onRefresh();}else showToast('Ban failed.',false);
     };
 
     return (
@@ -308,12 +312,15 @@ const UsersTab = ({ users, onRefresh, showToast }) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────────
-// TAB: LIBRARY
+// TAB: LIBRARY (enhanced)
 // ────────────────────────────────────────────────────────────────────────────────
 const LibraryTab = ({ books, setBooks, showToast }) => {
-    const [loading] = useState(false);
     const [search, setSearch] = useState('');
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [nuking, setNuking] = useState(false);
+    const [nukeConfirm, setNukeConfirm] = useState(false);
+    const [chunkCounts, setChunkCounts] = useState({});
+    const [reindexing, setReindexing] = useState(null);
 
     const doDelete = async () => {
         const r = await fetch(`/api/admin/books/${deleteTarget.id}`,{method:'DELETE'});
@@ -322,12 +329,35 @@ const LibraryTab = ({ books, setBooks, showToast }) => {
         if(r.ok){showToast(`"${target.title||target.filename}" deleted.`);setBooks(prev=>prev.filter(b=>b.id!==target.id));}else showToast('Delete failed.',false);
     };
 
+    const doNuke = async () => {
+        setNuking(true); setNukeConfirm(false);
+        const r = await fetch('/api/admin/books/all',{method:'DELETE'});
+        setNuking(false);
+        if(r.ok){const d=await r.json();showToast(d.message);setBooks([]);}else showToast('Nuke failed.',false);
+    };
+
+    const fetchChunks = async (bookId) => {
+        try{
+            const r=await fetch(`/api/admin/books/${bookId}/chunk-count`);
+            if(r.ok){const d=await r.json();setChunkCounts(p=>({...p,[bookId]:d}));}
+        }catch{}
+    };
+
+    const doReindex = async (bookId, title) => {
+        setReindexing(bookId);
+        const r=await fetch(`/api/admin/books/${bookId}/reindex`,{method:'POST'});
+        setReindexing(null);
+        if(r.ok){const d=await r.json();showToast(d.message);fetchChunks(bookId);}else showToast('Reindex failed.',false);
+    };
+
     const filtered = books.filter(b=>(b.title||b.filename||'').toLowerCase().includes(search.toLowerCase())||(b.subject||'').toLowerCase().includes(search.toLowerCase()));
     const subjectMap = books.reduce((a,b)=>{const s=b.subject||'General';a[s]=(a[s]||0)+1;return a;},{});
 
     return (
         <div>
             {deleteTarget && <ConfirmModal title="Delete Book" message={`Delete "${deleteTarget.title||deleteTarget.filename}"? This can't be undone.`} onConfirm={doDelete} onClose={()=>setDeleteTarget(null)}/>}
+            {nukeConfirm && <ConfirmModal title="☢ NUKE ENTIRE LIBRARY" message={`This will PERMANENTLY DELETE ALL ${books.length} BOOKS and their PDF files. There is NO undo. Type-confirm and click to proceed.`} onConfirm={doNuke} onClose={()=>setNukeConfirm(false)}/>}
+
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
                 {Object.entries(subjectMap).map(([s,n])=>(
                     <span key={s} style={{ padding:'4px 12px', borderRadius:20, fontSize:'0.72rem', fontWeight:700, background:'rgba(52,211,153,0.1)', color:'#34d399', border:'1px solid rgba(52,211,153,0.25)' }}>{s} ({n})</span>
@@ -337,33 +367,53 @@ const LibraryTab = ({ books, setBooks, showToast }) => {
                 <Search size={14} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'#475569' }}/>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or subject…" style={searchStyle}/>
             </div>
-            {loading ? <div style={{ textAlign:'center', padding:50, color:'#334155' }}>Loading…</div> : (
-                <div style={{ borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)' }}>
-                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.84rem' }}>
-                        <thead><tr style={{ background:'rgba(0,0,0,0.35)' }}>
-                            {['Title','Subject','Author','Year','Grade Range','Action'].map((h,i)=><th key={h} style={theadTh(i===5)}>{h}</th>)}
-                        </tr></thead>
-                        <tbody>
-                            {filtered.length===0 ? <tr><td colSpan={6} style={{ padding:36, textAlign:'center', color:'#334155' }}>No books found.</td></tr>
-                            : filtered.map((b,i)=>(
-                                <tr key={b.id} style={{ borderTop:'1px solid rgba(255,255,255,0.04)', background:i%2===0?'transparent':'rgba(255,255,255,0.01)' }}>
-                                    <td style={{ padding:'12px 18px' }}>
-                                        <div style={{ fontWeight:600, color:'#f1f5f9' }}>{b.title||b.filename?.replace('.pdf','')||'Untitled'}</div>
-                                        <div style={{ fontSize:'0.68rem', color:'#334155', marginTop:2 }}>{b.filename}</div>
-                                    </td>
-                                    <td style={{ padding:'12px 18px' }}><span style={{ padding:'3px 10px', borderRadius:20, fontSize:'0.72rem', fontWeight:700, background:'rgba(52,211,153,0.1)', color:'#34d399', border:'1px solid rgba(52,211,153,0.2)' }}>{b.subject||'General'}</span></td>
-                                    <td style={{ padding:'12px 18px', color:'#94a3b8', fontSize:'0.82rem' }}>{b.author||<span style={{color:'#334155'}}>—</span>}</td>
-                                    <td style={{ padding:'12px 18px', color:'#475569', fontSize:'0.82rem' }}>{b.year||'—'}</td>
-                                    <td style={{ padding:'12px 18px', color:'#475569', fontSize:'0.78rem' }}>{b.min_grade&&b.max_grade?`Gr ${b.min_grade}–${b.max_grade}`:'—'}</td>
-                                    <td style={{ padding:'12px 18px', textAlign:'right' }}>
+            <div style={{ borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)', marginBottom:24 }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.84rem' }}>
+                    <thead><tr style={{ background:'rgba(0,0,0,0.35)' }}>
+                        {['Title','Subject','Author','Yr','Grade','Chunks / Knowledge','Actions'].map((h,i)=><th key={h} style={theadTh(i===6)}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                        {filtered.length===0 ? <tr><td colSpan={7} style={{ padding:36, textAlign:'center', color:'#334155' }}>No books found.</td></tr>
+                        : filtered.map((b,i)=>(
+                            <tr key={b.id} style={{ borderTop:'1px solid rgba(255,255,255,0.04)', background:i%2===0?'transparent':'rgba(255,255,255,0.01)' }}>
+                                <td style={{ padding:'11px 14px' }}>
+                                    <div style={{ fontWeight:600, color:'#f1f5f9', fontSize:'0.83rem' }}>{b.title||b.filename?.replace('.pdf','')||'Untitled'}</div>
+                                    <div style={{ fontSize:'0.65rem', color:'#334155', marginTop:1 }}>ID:{b.id} · {b.filename}</div>
+                                </td>
+                                <td style={{ padding:'11px 14px' }}><span style={{ padding:'2px 9px', borderRadius:20, fontSize:'0.7rem', fontWeight:700, background:'rgba(52,211,153,0.1)', color:'#34d399', border:'1px solid rgba(52,211,153,0.2)' }}>{b.subject||'General'}</span></td>
+                                <td style={{ padding:'11px 14px', color:'#94a3b8', fontSize:'0.8rem' }}>{b.author||<span style={{color:'#334155'}}>—</span>}</td>
+                                <td style={{ padding:'11px 14px', color:'#475569', fontSize:'0.8rem' }}>{b.year||'—'}</td>
+                                <td style={{ padding:'11px 14px', color:'#475569', fontSize:'0.78rem' }}>{b.min_grade&&b.max_grade?`Gr ${b.min_grade}–${b.max_grade}`:'—'}</td>
+                                <td style={{ padding:'11px 14px' }}>
+                                    {chunkCounts[b.id] ? (
+                                        <div style={{ fontSize:'0.72rem' }}>
+                                            <span style={{ color:'#34d399', fontWeight:700 }}>{chunkCounts[b.id].chunks}</span><span style={{ color:'#475569' }}> chunks</span>
+                                            <span style={{ color:'#818cf8', fontWeight:700, marginLeft:8 }}>{chunkCounts[b.id].knowledge}</span><span style={{ color:'#475569' }}> knowledge</span>
+                                        </div>
+                                    ) : (
+                                        <button onClick={()=>fetchChunks(b.id)} style={{ fontSize:'0.68rem', padding:'2px 8px', borderRadius:6, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', color:'#475569', cursor:'pointer' }}>Check</button>
+                                    )}
+                                </td>
+                                <td style={{ padding:'11px 14px', textAlign:'right' }}>
+                                    <div style={{ display:'flex', gap:5, justifyContent:'flex-end' }}>
+                                        <button onClick={()=>doReindex(b.id, b.title)} disabled={reindexing===b.id} style={actionBtn('rgba(99,102,241,0.3)','rgba(99,102,241,0.08)','#818cf8')}>{reindexing===b.id?'…':'⟳'} Reindex</button>
                                         <button onClick={()=>setDeleteTarget(b)} style={actionBtn('rgba(239,68,68,0.3)','rgba(239,68,68,0.08)','#f87171')}><Trash2 size={11}/> Delete</button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Danger Zone */}
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(239,68,68,0.04)', border:'1px solid rgba(239,68,68,0.2)' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}><AlertTriangle size={16} color="#f87171"/><span style={{ fontSize:'0.72rem', fontWeight:800, color:'#f87171', textTransform:'uppercase', letterSpacing:'0.08em' }}>Danger Zone</span></div>
+                <p style={{ color:'#64748b', fontSize:'0.83rem', marginBottom:14 }}>Nuke Library permanently deletes ALL books, their PDF files, chunks, and knowledge data. Students lose access immediately.</p>
+                <button onClick={()=>setNukeConfirm(true)} disabled={nuking||books.length===0} style={{ padding:'10px 22px', borderRadius:10, border:'1px solid rgba(239,68,68,0.5)', background:'rgba(239,68,68,0.12)', color:'#f87171', cursor:'pointer', fontWeight:700, fontSize:'0.84rem', fontFamily:'inherit' }}>
+                    {nuking?'Deleting…':`☢ Nuke Library (${books.length} books)`}
+                </button>
+            </div>
         </div>
     );
 };
@@ -517,11 +567,134 @@ const AdminToolsTab = ({ currentUser, showToast }) => {
         </div>
     );
 };
+// ────────────────────────────────────────────────────────────────────────────────
+// TAB: DATABASE
+// ────────────────────────────────────────────────────────────────────────────────
+const DatabaseTab = ({ showToast }) => {
+    const [dbStats, setDbStats] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [vacuuming, setVacuuming] = useState(false);
+    const [vacuumResult, setVacuumResult] = useState(null);
 
+    const fetchStats = async () => {
+        setLoading(true);
+        const r = await fetch('/api/admin/db/stats');
+        if(r.ok){const d=await r.json();setDbStats(d.counts);}
+        else showToast('Stats fetch failed.',false);
+        setLoading(false);
+    };
+    const doVacuum = async () => {
+        setVacuuming(true); setVacuumResult(null);
+        const r = await fetch('/api/admin/db/vacuum',{method:'POST'});
+        if(r.ok){const d=await r.json();setVacuumResult(d);showToast(`Vacuum done: ${d.removed_chunks} chunks, ${d.removed_knowledge} knowledge rows removed.`);}
+        else showToast('Vacuum failed.',false);
+        setVacuuming(false);
+    };
+    useEffect(()=>{fetchStats();},[]);
+
+    const TABLE_COLORS = { users:'#60a5fa', books:'#34d399', book_chunks:'#818cf8', book_knowledge:'#fbbf24', activity_logs:'#f87171', saved_quizzes:'#fb923c' };
+    const TABLE_LABELS = { users:'Users', books:'Books', book_chunks:'Book Chunks (RAG)', book_knowledge:'AI Knowledge Rows', activity_logs:'Activity Logs', saved_quizzes:'Saved Quizzes' };
+
+    return (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <p style={{ color:'#64748b', fontSize:'0.84rem' }}>Live database row counts across all tables.</p>
+                <button onClick={fetchStats} disabled={loading} style={actionBtn('rgba(99,102,241,0.3)','rgba(99,102,241,0.08)','#818cf8')}><RefreshCw size={11} className={loading?'spin':''}/> Refresh</button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14 }}>
+                {Object.entries(TABLE_LABELS).map(([key,label])=>{
+                    const count = dbStats?.[key];
+                    const color = TABLE_COLORS[key]||'#94a3b8';
+                    const warn = key==='book_chunks'&&count===0;
+                    return (
+                        <div key={key} style={{ padding:'20px 22px', borderRadius:16, background:'rgba(255,255,255,0.02)', border:`1px solid ${warn?'rgba(239,68,68,0.4)':'rgba(255,255,255,0.06)'}`, position:'relative', overflow:'hidden' }}>
+                            <div style={{ fontSize:'0.65rem', fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>{label}</div>
+                            <div style={{ fontSize:'2.4rem', fontWeight:900, color:warn?'#f87171':color, lineHeight:1 }}>{count===-1?'ERR':count??'…'}</div>
+                            {warn&&<div style={{ fontSize:'0.68rem', color:'#f87171', marginTop:4 }}>⚠ Empty — run reindex!</div>}
+                            <div style={{ position:'absolute', bottom:0, left:0, height:3, width:'100%', background:`linear-gradient(90deg,${color}80,transparent)` }}/>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight:700, color:'#f1f5f9', marginBottom:8 }}>🧹 Vacuum Database</div>
+                <p style={{ color:'#64748b', fontSize:'0.83rem', marginBottom:14 }}>Remove orphaned chunk and knowledge rows whose parent book has been deleted. Safe to run anytime.</p>
+                {vacuumResult && <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(16,185,129,0.08)', border:'1px solid rgba(16,185,129,0.2)', color:'#34d399', fontSize:'0.82rem', marginBottom:12 }}>Removed {vacuumResult.removed_chunks} orphan chunks + {vacuumResult.removed_knowledge} knowledge rows.</div>}
+                <button onClick={doVacuum} disabled={vacuuming} style={{ padding:'10px 22px', borderRadius:10, border:'1px solid rgba(16,185,129,0.3)', background:'rgba(16,185,129,0.08)', color:'#34d399', cursor:'pointer', fontWeight:700, fontSize:'0.84rem', fontFamily:'inherit' }}>
+                    {vacuuming?'Vacuuming…':'Run Vacuum'}
+                </button>
+            </div>
+        </div>
+    );
+};
 
 // ────────────────────────────────────────────────────────────────────────────────
-// TAB: EXPORT
+// TAB: AI & MODELS
 // ────────────────────────────────────────────────────────────────────────────────
+const AIModelsTab = ({ showToast }) => {
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState(null);
+    const MODELS = [
+        { name:'llama-3.3-70b-versatile', label:'Primary', color:'#818cf8', desc:'Best quality, 100K tokens/day limit' },
+        { name:'llama-3.1-8b-instant',    label:'Fallback 1', color:'#34d399', desc:'Fast & light — used when primary is rate-limited' },
+        { name:'gemma2-9b-it',             label:'Fallback 2', color:'#fbbf24', desc:'Google Gemma — last resort fallback' },
+    ];
+
+    const testAI = async () => {
+        setTesting(true); setTestResult(null);
+        try{
+            const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'Say OK',mode:'normal'})});
+            const d = await r.json();
+            setTestResult(r.ok ? {ok:true, msg:'AI responded successfully!'} : {ok:false, msg:d.error||'AI test failed'});
+        }catch(e){setTestResult({ok:false,msg:e.message});}
+        setTesting(false);
+    };
+
+    return (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight:700, color:'#f1f5f9', marginBottom:16 }}>Groq Model Fallback Chain</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {MODELS.map((m,i)=>(
+                        <div key={m.name} style={{ display:'flex', alignItems:'center', gap:16, padding:'14px 18px', borderRadius:14, background:'rgba(255,255,255,0.02)', border:`1px solid ${m.color}25` }}>
+                            <div style={{ width:32, height:32, borderRadius:'50%', background:`${m.color}18`, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, color:m.color, fontSize:'0.9rem', flexShrink:0 }}>{i+1}</div>
+                            <div style={{ flex:1 }}>
+                                <div style={{ fontWeight:700, color:'#f1f5f9', fontFamily:'monospace', fontSize:'0.84rem' }}>{m.name}</div>
+                                <div style={{ fontSize:'0.72rem', color:'#64748b', marginTop:2 }}>{m.desc}</div>
+                            </div>
+                            <span style={{ padding:'3px 10px', borderRadius:20, fontSize:'0.7rem', fontWeight:700, background:`${m.color}18`, color:m.color, border:`1px solid ${m.color}30` }}>{m.label}</span>
+                        </div>
+                    ))}
+                </div>
+                <p style={{ color:'#475569', fontSize:'0.78rem', marginTop:14, lineHeight:1.6 }}>When a model hits its rate limit or daily cap, the system automatically falls back to the next model. No manual intervention needed.</p>
+            </div>
+
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight:700, color:'#f1f5f9', marginBottom:8 }}>Prompt Mode Rules</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[['👨‍🎓 Students','Fully restricted — ONLY library content. Off-topic questions are refused.','#60a5fa'],
+                      ['👩‍🏫 Teachers','Unrestricted — can ask anything, supplements library context with general AI knowledge.','#c4b5fd'],
+                      ['🛡 Admins','Same as Teachers — fully unrestricted.','#f87171']].map(([r,d,c])=>(
+                        <div key={r} style={{ display:'flex', gap:14, padding:'12px 16px', borderRadius:12, background:'rgba(255,255,255,0.02)', border:`1px solid ${c}20` }}>
+                            <span style={{ fontWeight:700, color:c, minWidth:110, fontSize:'0.82rem' }}>{r}</span>
+                            <span style={{ color:'#64748b', fontSize:'0.82rem', lineHeight:1.5 }}>{d}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ padding:'22px 24px', borderRadius:18, background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight:700, color:'#f1f5f9', marginBottom:8 }}>Live AI Health Check</div>
+                {testResult && <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:10, background:testResult.ok?'rgba(16,185,129,0.08)':'rgba(239,68,68,0.08)', border:`1px solid ${testResult.ok?'rgba(16,185,129,0.25)':'rgba(239,68,68,0.25)'}`, color:testResult.ok?'#34d399':'#f87171', fontSize:'0.82rem' }}>{testResult.msg}</div>}
+                <button onClick={testAI} disabled={testing} style={{ padding:'10px 22px', borderRadius:10, border:'1px solid rgba(99,102,241,0.3)', background:'rgba(99,102,241,0.1)', color:'#818cf8', cursor:'pointer', fontWeight:700, fontSize:'0.84rem', fontFamily:'inherit' }}>
+                    {testing?'Testing…':'⚡ Send Test Ping to AI'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const ExportTab = ({ users, logs, books }) => {
     const csv = (headers, rows) => {
         const lines = [headers.join(','), ...rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(','))];
@@ -570,12 +743,14 @@ const ExportTab = ({ users, logs, books }) => {
 // MAIN AdminPanel
 // ────────────────────────────────────────────────────────────────────────────────
 const TABS = [
-    { id:'overview', label:'Overview',      icon:BarChart2  },
-    { id:'users',    label:'Users',         icon:Users      },
-    { id:'library',  label:'Library',       icon:BookOpen   },
-    { id:'logs',     label:'Activity Logs', icon:Terminal   },
-    { id:'tools',    label:'Admin Tools',   icon:Settings   },
-    { id:'export',   label:'Export',        icon:Download   },
+    { id:'overview',  label:'Overview',      icon:BarChart2  },
+    { id:'users',     label:'Users',         icon:Users      },
+    { id:'library',   label:'Library',       icon:BookOpen   },
+    { id:'database',  label:'Database',      icon:Database   },
+    { id:'aimodels',  label:'AI & Models',   icon:Zap        },
+    { id:'logs',      label:'Activity Logs', icon:Terminal   },
+    { id:'tools',     label:'Admin Tools',   icon:Settings   },
+    { id:'export',    label:'Export',        icon:Download   },
 ];
 
 const AdminPanel = () => {
@@ -614,7 +789,13 @@ const AdminPanel = () => {
         </button>
     );
 
-    const tabTitles = { overview:'Overview', users:'User Management', library:'Library Control', logs:'Activity Logs', tools:'Admin Tools', export:'Export & Reports' };
+    const tabTitles = { overview:'Overview', users:'User Management', library:'Library Control', database:'Database Inspector', aimodels:'AI & Models', logs:'Activity Logs', tools:'Admin Tools', export:'Export & Reports' };
+
+    const handleViewAs = async (u) => {
+        const r = await fetch(`/api/admin/impersonate/${u.id}`,{method:'POST'});
+        if(r.ok){ showToast(`Now viewing as ${u.username}. Go to main dashboard.`); window.open('/dashboard','_blank'); }
+        else showToast('Impersonation failed.',false);
+    };
 
     return (
         <div style={{ display:'flex', height:'100vh', background:'#060913', color:'#f8fafc', fontFamily:'"Inter",sans-serif', overflow:'hidden' }}>
@@ -675,13 +856,15 @@ const AdminPanel = () => {
                             <div style={{ color:'#475569', fontFamily:'monospace', fontSize:'0.8rem', letterSpacing:'2px' }}>LOADING DATA…</div>
                         </div>
                     ) : (
-                        <div className="animate-fade-up">
-                            {tab==='overview' && <OverviewTab stats={stats} logs={logs}/>}
-                            {tab==='users'    && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast}/>}
-                            {tab==='library'  && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
-                            {tab==='logs'     && <LogsTab logs={logs}/>}
-                            {tab==='tools'    && <AdminToolsTab currentUser={user} showToast={showToast}/>}
-                            {tab==='export'   && <ExportTab users={users} logs={logs} books={books}/>}
+                                        <div className="animate-fade-up">
+                            {tab==='overview'  && <OverviewTab stats={stats} logs={logs}/>}
+                            {tab==='users'     && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast} onViewAs={handleViewAs}/>}
+                            {tab==='library'   && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
+                            {tab==='database'  && <DatabaseTab showToast={showToast}/>}
+                            {tab==='aimodels'  && <AIModelsTab showToast={showToast}/>}
+                            {tab==='logs'      && <LogsTab logs={logs}/>}
+                            {tab==='tools'     && <AdminToolsTab currentUser={user} showToast={showToast}/>}
+                            {tab==='export'    && <ExportTab users={users} logs={logs} books={books}/>}
                         </div>
                     )}
                 </div>
