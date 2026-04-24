@@ -20,16 +20,19 @@ import urllib.request
 HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/BAAI/bge-small-en-v1.5"
 
 def _hf_embed(texts):
-    """Call HuggingFace free Inference API to embed a list of texts. Returns list of 384-dim lists."""
-    payload = json.dumps({"inputs": texts, "options": {"wait_for_model": True}}).encode('utf-8')
+    """Call HuggingFace Inference API. Fails fast (5s) so it never blocks a Vercel function."""
+    payload = json.dumps({"inputs": texts, "options": {"wait_for_model": False}}).encode('utf-8')
     req = urllib.request.Request(HF_EMBED_URL, data=payload, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=5) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 def get_embedding(text: str):
-    """Return a 384-dim embedding list for a single text string."""
+    """Return a 384-dim embedding list. Returns None immediately if API is slow/unavailable."""
     try:
+        t0 = time.time()
         result = _hf_embed([text])
+        if time.time() - t0 > 4.5:
+            return None  # too slow for Vercel, skip
         if result and isinstance(result, list) and len(result) > 0:
             return result[0]
     except Exception as e:
@@ -521,14 +524,15 @@ def upload_file():
                 'max_grade':   max_grade,
                 'year':        year,
                 'description': description,
-                'status':      'processing',   # hide from students during processing
+                'status':      'ready',  # immediately visible; re-index later for full knowledge
             }).execute()
 
             new_book_id = insert_result.data[0]['id'] if insert_result.data else None
             book_title  = title or filename.replace('.pdf','').replace('_',' ')
 
+            # Kick off background knowledge extraction (works on a persistent server;
+            # on Vercel serverless this thread may not survive, but doesn't break anything)
             if new_book_id and content:
-                # Launch background thread — returns immediately to teacher
                 t = threading.Thread(
                     target=process_book_in_background,
                     args=(new_book_id, content, book_title),
@@ -538,9 +542,9 @@ def upload_file():
 
             log_action('Uploaded File', f'Filename: {filename}')
             return jsonify({
-                'message': f'"{book_title}" uploaded! Processing is running in the background.',
+                'message': f'"{book_title}" uploaded successfully! Use Admin → Re-Index Library to extract full AI knowledge.',
                 'book_id': new_book_id,
-                'status': 'processing'
+                'status': 'ready'
             }), 201
         except Exception as e:
             print(f"Error during upload: {e}")
