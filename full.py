@@ -573,10 +573,31 @@ def chat():
                     if best_page:
                         found_page = best_page
 
-                    # Build context from this book only — capped to avoid token limit
-                    full_text = "\n".join(p['text'] for p in page_data)
-                    context = f"Document: {book_row['filename']}\n\n"
-                    context += full_text[:8000]
+                    # Build context via RAG search within this specific book
+                    query_emb = get_embedding(query)
+                    rag_context = None
+                    if query_emb:
+                        try:
+                            rag_result = supabase.rpc('match_chunks', {
+                                'query_embedding': query_emb,
+                                'match_book_id': book_id,
+                                'match_count': 7,
+                                'match_subject': None,
+                            }).execute()
+                            if rag_result.data and len(rag_result.data) > 0:
+                                rag_context = f"Document: {book_row['filename']}\n\n"
+                                for chunk in rag_result.data:
+                                    rag_context += f"{chunk['content']}\n\n"
+                        except Exception as re:
+                            print(f"[chat] Per-book RAG failed: {re}")
+
+                    if rag_context:
+                        context = rag_context
+                    else:
+                        # Fallback: first 8K chars if RAG unavailable
+                        full_text = "\n".join(p['text'] for p in page_data)
+                        context = f"Document: {book_row['filename']}\n\n"
+                        context += full_text[:8000]
             except Exception as pe:
                 print(f"Per-page search failed, falling back: {pe}")
                 book_id = None  # fall through to generic search
