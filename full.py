@@ -13,6 +13,76 @@ from supabase import create_client, Client
 import redis
 import hashlib
 
+# --- Vector Embedding Model (RAG) ---
+_embed_model = None
+
+def _get_embed_model():
+    """Lazy-load the embedding model to avoid slow startup when not needed."""
+    global _embed_model
+    if _embed_model is None:
+        try:
+            from fastembed import TextEmbedding
+            _embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
+            print("\u2713 fastembed model loaded (bge-small-en-v1.5, 384-dim).")
+        except Exception as e:
+            print(f"\u26a0 fastembed not available: {e}")
+    return _embed_model
+
+def get_embedding(text: str):
+    """Return a 384-dim embedding list for a text string."""
+    model = _get_embed_model()
+    if model is None:
+        return None
+    embeddings = list(model.embed([text]))
+    return embeddings[0].tolist()
+
+def chunk_text(text: str, chunk_size=500, overlap=50):
+    """Split text into overlapping chunks of ~chunk_size characters."""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap
+    return [c.strip() for c in chunks if c.strip()]
+
+def index_book_chunks(book_id: int, content: str):
+    """Chunk text, embed each chunk, and upsert into book_chunks table."""
+    if not supabase or not content:
+        return
+    model = _get_embed_model()
+    if model is None:
+        print(f"[index_book_chunks] Skipping book {book_id} — no embed model.")
+        return
+    try:
+        # Delete old chunks for this book (idempotent re-index)
+        supabase.table('book_chunks').delete().eq('book_id', book_id).execute()
+
+        chunks = chunk_text(content, chunk_size=500, overlap=50)
+        if not chunks:
+            return
+
+        # Batch embed all chunks at once for speed
+        embeddings = list(model.embed(chunks))
+
+        rows = []
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+            rows.append({
+                'book_id': book_id,
+                'chunk_index': i,
+                'content': chunk,
+                'embedding': emb.tolist(),
+            })
+
+        # Insert in batches of 50 to avoid payload limits
+        BATCH = 50
+        for b in range(0, len(rows), BATCH):
+            supabase.table('book_chunks').insert(rows[b:b+BATCH]).execute()
+
+        print(f"[RAG] Indexed {len(rows)} chunks for book_id={book_id}")
+    except Exception as e:
+        print(f"[index_book_chunks] Error for book {book_id}: {e}")
+
 load_dotenv()
 
 # --- REDIS CACHING (Graceful Fallback) ---
@@ -302,7 +372,7 @@ def upload_file():
             except Exception as e:
                 print(f"Storage upload warning: {e}")
             
-            supabase.table('books').insert({
+            insert_result = supabase.table('books').insert({
                 'filename':    filename,
                 'title':       title or filename.replace('.pdf','').replace('_',' '),
                 'author':      author,
@@ -313,6 +383,14 @@ def upload_file():
                 'year':        year,
                 'description': description,
             }).execute()
+
+            # RAG: chunk + embed the book for vector search
+            new_book_id = insert_result.data[0]['id'] if insert_result.data else None
+            if new_book_id and content:
+                try:
+                    index_book_chunks(new_book_id, content)
+                except Exception as emb_err:
+                    print(f"[upload] Embedding failed (non-fatal): {emb_err}")
             
             log_action('Uploaded File', f'Filename: {filename}')
             return jsonify({'message': f'"{title or filename}" uploaded and indexed successfully!'}), 201
@@ -505,40 +583,64 @@ def chat():
 
         # ── Generic multi-book search (no book_id or fallback) ──────────────
         if not book_id:
-            response_data = supabase.table('books').select('filename, content').execute()
-            all_books = response_data.data
+            # Try RAG vector search first
+            query_emb = get_embedding(query)
+            rag_used = False
 
-            if not all_books:
-                context = "The user has not uploaded any documents to their library yet."
-            else:
-                file_list = ", ".join([b['filename'] for b in all_books])
-                context = f"Available Documents in Library: {file_list}\n\n"
-                keywords = query.lower().split()
-                match_found = False
+            if query_emb:
+                try:
+                    rag_result = supabase.rpc('match_chunks', {
+                        'query_embedding': query_emb,
+                        'match_book_id': None,
+                        'match_count': 10,
+                        'match_subject': None,
+                    }).execute()
 
-                for book in all_books:
-                    text = book['content'] or ""
-                    if any(k in text.lower() for k in keywords if len(k) > 3):
-                        for k in keywords:
-                            if len(k) <= 3: continue
-                            idx = text.lower().find(k)
-                            if idx != -1:
-                                start = max(0, idx - 2000)
-                                end = min(len(text), idx + 5000)
-                                context += f"--- Snippet from {book['filename']} ---\n{text[start:end]}\n\n"
-                                match_found = True
-                                break
-                    if len(context) > 50000:
-                        break
+                    if rag_result.data and len(rag_result.data) > 0:
+                        context = "Semantically matched excerpts from the student's library:\n\n"
+                        for chunk in rag_result.data:
+                            sim = chunk.get('similarity', 0)
+                            context += f"--- From {chunk['filename']} (relevance: {sim:.2f}) ---\n{chunk['content']}\n\n"
+                        rag_used = True
+                except Exception as rag_err:
+                    print(f"[chat] RAG search failed, falling back to keyword: {rag_err}")
 
-                meta_keywords = ["summary", "overview", "about", "topic", "explain", "what is"]
-                is_meta_query = any(mk in query.lower() for mk in meta_keywords)
-                if not match_found or is_meta_query:
+            # Fallback: keyword search if RAG unavailable or returned nothing
+            if not rag_used:
+                response_data = supabase.table('books').select('filename, content').execute()
+                all_books = response_data.data
+
+                if not all_books:
+                    context = "The user has not uploaded any documents to their library yet."
+                else:
+                    file_list = ", ".join([b['filename'] for b in all_books])
+                    context = f"Available Documents in Library: {file_list}\n\n"
+                    keywords = query.lower().split()
+                    match_found = False
+
                     for book in all_books:
-                        if f"Snippet from {book['filename']}" not in context:
-                            text_snippet = (book['content'] or "")[:5000]
-                            context += f"--- Beginning of {book['filename']} ---\n{text_snippet}\n...\n\n"
-                        if len(context) > 50000: break
+                        text = book['content'] or ""
+                        if any(k in text.lower() for k in keywords if len(k) > 3):
+                            for k in keywords:
+                                if len(k) <= 3: continue
+                                idx = text.lower().find(k)
+                                if idx != -1:
+                                    start = max(0, idx - 2000)
+                                    end = min(len(text), idx + 5000)
+                                    context += f"--- Snippet from {book['filename']} ---\n{text[start:end]}\n\n"
+                                    match_found = True
+                                    break
+                        if len(context) > 50000:
+                            break
+
+                    meta_keywords = ["summary", "overview", "about", "topic", "explain", "what is"]
+                    is_meta_query = any(mk in query.lower() for mk in meta_keywords)
+                    if not match_found or is_meta_query:
+                        for book in all_books:
+                            if f"Snippet from {book['filename']}" not in context:
+                                text_snippet = (book['content'] or "")[:5000]
+                                context += f"--- Beginning of {book['filename']} ---\n{text_snippet}\n...\n\n"
+                            if len(context) > 50000: break
 
         # Construct Insane System Prompt Based on Mode
         if mode == 'simple':
@@ -1144,13 +1246,14 @@ def admin_create_admin():
 @app.route('/api/admin/reindex', methods=['POST'])
 @require_admin
 def admin_reindex():
-    """Re-download every PDF from Supabase Storage and re-extract ALL text (no page limit)."""
+    """Re-download every PDF, re-extract text, and re-embed chunks for RAG."""
     try:
         rows = supabase.table('books').select('id, filename').execute()
         if not rows.data:
             return jsonify({'message': 'No books to re-index.', 'updated': 0}), 200
 
         updated = 0
+        embedded = 0
         errors = []
         for book in rows.data:
             try:
@@ -1160,6 +1263,14 @@ def admin_reindex():
                 new_content = extract_text_from_pdf(io.BytesIO(pdf_bytes))
                 supabase.table('books').update({'content': new_content}).eq('id', book['id']).execute()
                 updated += 1
+
+                # RAG: re-embed chunks
+                try:
+                    index_book_chunks(book['id'], new_content)
+                    embedded += 1
+                except Exception as emb_err:
+                    errors.append(f"{book['filename']} (embed): {str(emb_err)}")
+                    print(f"[reindex] Embedding failed for {book['filename']}: {emb_err}")
             except Exception as be:
                 errors.append(f"{book['filename']}: {str(be)}")
                 print(f"[reindex] Failed for {book['filename']}: {be}")
@@ -1167,10 +1278,11 @@ def admin_reindex():
         if redis_client:
             redis_client.delete("library_books")
 
-        log_action('Re-Indexed Library', f'Updated {updated}/{len(rows.data)} books')
+        log_action('Re-Indexed Library', f'Updated {updated}/{len(rows.data)} books, embedded {embedded}')
         return jsonify({
-            'message': f'Re-indexed {updated}/{len(rows.data)} books.',
+            'message': f'Re-indexed {updated}/{len(rows.data)} books. Embedded {embedded} for RAG.',
             'updated': updated,
+            'embedded': embedded,
             'total': len(rows.data),
             'errors': errors,
         }), 200
