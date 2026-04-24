@@ -573,10 +573,10 @@ def chat():
                     if best_page:
                         found_page = best_page
 
-                    # Build context from this book only — send as much as possible
+                    # Build context from this book only — capped to avoid token limit
                     full_text = "\n".join(p['text'] for p in page_data)
                     context = f"Document: {book_row['filename']}\n\n"
-                    context += full_text[:80000]
+                    context += full_text[:8000]
             except Exception as pe:
                 print(f"Per-page search failed, falling back: {pe}")
                 book_id = None  # fall through to generic search
@@ -592,7 +592,7 @@ def chat():
                     rag_result = supabase.rpc('match_chunks', {
                         'query_embedding': query_emb,
                         'match_book_id': None,
-                        'match_count': 10,
+                        'match_count': 5,
                         'match_subject': None,
                     }).execute()
 
@@ -630,7 +630,7 @@ def chat():
                                     context += f"--- Snippet from {book['filename']} ---\n{text[start:end]}\n\n"
                                     match_found = True
                                     break
-                        if len(context) > 50000:
+                        if len(context) > 8000:
                             break
 
                     meta_keywords = ["summary", "overview", "about", "topic", "explain", "what is"]
@@ -638,9 +638,9 @@ def chat():
                     if not match_found or is_meta_query:
                         for book in all_books:
                             if f"Snippet from {book['filename']}" not in context:
-                                text_snippet = (book['content'] or "")[:5000]
+                                text_snippet = (book['content'] or "")[:3000]
                                 context += f"--- Beginning of {book['filename']} ---\n{text_snippet}\n...\n\n"
-                            if len(context) > 50000: break
+                            if len(context) > 8000: break
 
         # Construct Insane System Prompt Based on Mode
         if mode == 'simple':
