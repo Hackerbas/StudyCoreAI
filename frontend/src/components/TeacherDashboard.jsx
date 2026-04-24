@@ -328,6 +328,7 @@ const TeacherDashboard = () => {
     const [search,     setSearch]     = useState('');
     const [filterSub,  setFilterSub]  = useState('All');
     const [editBook,   setEditBook]   = useState(null);
+    const [processingBooks, setProcessingBooks] = useState([]); // [{id, title}]
 
     useEffect(() => { fetchLibrary(); }, []);
 
@@ -337,6 +338,27 @@ const TeacherDashboard = () => {
             const data = await res.json();
             if (res.ok) setBooks(data.books || []);
         } catch {}
+    };
+
+    const startPolling = (bookId, bookTitle) => {
+        setProcessingBooks(prev => [...prev, { id: bookId, title: bookTitle }]);
+        const interval = setInterval(async () => {
+            try {
+                const r = await fetch(`/api/book/${bookId}/status`);
+                if (!r.ok) return;
+                const d = await r.json();
+                if (d.status === 'ready' || d.status === 'error') {
+                    clearInterval(interval);
+                    setProcessingBooks(prev => prev.filter(b => b.id !== bookId));
+                    fetchLibrary();
+                    if (d.status === 'ready') {
+                        setUploadMsg({ type: 'success', text: `✅ "${bookTitle}" is ready for students!` });
+                    } else {
+                        setUploadMsg({ type: 'error', text: `⚠ "${bookTitle}" processing failed. Try re-indexing.` });
+                    }
+                }
+            } catch {}
+        }, 3000); // poll every 3s
     };
 
     const handleUpload = async ({ file, form }) => {
@@ -362,11 +384,14 @@ const TeacherDashboard = () => {
                     if (data.error) errText = data.error;
                 } catch (e) {} // Not JSON
                 setUploadMsg({ type: 'error', text: errText });
-                fetchLibrary(); // refresh in case it partially uploaded
+                fetchLibrary();
                 return;
             }
             const data = await res.json();
+            const bookTitle = form.title || file.name;
             setUploadMsg({ type: 'success', text: data.message });
+            // Start background polling for processing status
+            if (data.book_id) startPolling(data.book_id, bookTitle);
             fetchLibrary();
         } catch { setUploadMsg({ type: 'error', text: 'Upload failed — network disconnected or blocked.' }); }
         finally { setUploading(false); }
@@ -414,6 +439,20 @@ const TeacherDashboard = () => {
                 {/* Stats */}
                 <StatsBar books={books} />
 
+                {/* Processing banner */}
+                {processingBooks.length > 0 && (
+                    <div style={{ marginBottom: 20, padding: '14px 18px', borderRadius: 14,
+                        background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)',
+                        display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span className="spin" style={{ width: 16, height: 16, border: '2px solid rgba(99,102,241,0.3)', borderTopColor: '#818cf8', borderRadius: '50%', flexShrink: 0 }}/>
+                        <div>
+                            <p style={{ fontWeight: 700, color: '#818cf8', fontSize: '0.88rem' }}>AI Knowledge Extraction Running</p>
+                            <p style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                {processingBooks.map(b => b.title).join(', ')} — Students can’t see {processingBooks.length > 1 ? 'these books' : 'this book'} until processing is complete.
+                            </p>
+                        </div>
+                    </div>
+                )}
                 {/* Two-column layout */}
                 <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 24, alignItems: 'start' }}>
 

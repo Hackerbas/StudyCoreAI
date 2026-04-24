@@ -2,6 +2,7 @@ import os
 import io
 import json
 import time
+import threading
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, jsonify, request, send_from_directory, session
@@ -82,6 +83,144 @@ def index_book_chunks(book_id: int, content: str):
         print(f"[RAG] Indexed {len(rows)} chunks for book_id={book_id}")
     except Exception as e:
         print(f"[index_book_chunks] Error for book {book_id}: {e}")
+
+# ────────────────────────────────────────────────────────────────────────────────
+# BACKGROUND KNOWLEDGE EXTRACTION
+# Runs in a daemon thread after upload. Splits the book into 3K-char chunks,
+# sends each to Groq to extract structured knowledge (characters, events,
+# concepts, definitions, summary), embeds and stores in book_knowledge table.
+# Marks the book as 'ready' when done (or 'error' on failure).
+# ────────────────────────────────────────────────────────────────────────────────
+
+KNOWLEDGE_EXTRACTION_PROMPT = """You are a knowledge extraction engine for an educational AI system. 
+From the passage below, extract structured information as a JSON object. Only include fields that are actually present in the text.
+
+Return ONLY a valid JSON object with these optional fields:
+{
+  "characters": ["Name: full description of who they are and what they did/discovered/invented"],
+  "events": ["Description of a key event, experiment, or plot point"],
+  "concepts": ["Concept name: clear scientific, literary, or historical explanation"],
+  "definitions": ["Term: definition as used in this text"],
+  "summary": "One dense paragraph summarizing this passage for exam preparation"
+}
+
+Be thorough — this will be used to help students get 100% on exams. Write for AI consumption, not students.
+Passage:"""
+
+def _extract_knowledge_from_chunk(chunk_text, book_title):
+    """Send one 3K-char chunk to Groq and return the structured knowledge JSON."""
+    try:
+        resp = groq_chat_with_rotation(
+            model='llama-3.3-70b-versatile',
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": KNOWLEDGE_EXTRACTION_PROMPT},
+                {"role": "user", "content": f"Book: {book_title}\n\n{chunk_text}"}
+            ]
+        )
+        return json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        print(f"[knowledge_extract] Error: {e}")
+        return None
+
+def process_book_in_background(book_id, content, book_title):
+    """
+    Background thread: extract AI-structured knowledge from a book chunk-by-chunk,
+    respecting the 12K TPM rate limit with a 1.2s sleep between chunks.
+    Saves everything to book_knowledge table, then marks book as ready.
+    """
+    print(f"[pipeline] Starting knowledge extraction for book_id={book_id}")
+    supabase_local = None
+    try:
+        from supabase import create_client
+        supabase_local = create_client(
+            os.environ.get("SUPABASE_URL"),
+            os.environ.get("SUPABASE_KEY")
+        )
+    except Exception as e:
+        print(f"[pipeline] Cannot create Supabase client: {e}")
+        return
+
+    try:
+        # Clear old knowledge for this book
+        supabase_local.table('book_knowledge').delete().eq('book_id', book_id).execute()
+
+        # Chunk the content into 3K-char pieces with 200-char overlap for context continuity
+        CHUNK_SIZE = 3000
+        OVERLAP = 200
+        raw_chunks = []
+        start = 0
+        while start < len(content):
+            raw_chunks.append(content[start:start + CHUNK_SIZE])
+            start += CHUNK_SIZE - OVERLAP
+        raw_chunks = [c.strip() for c in raw_chunks if c.strip()]
+
+        total = len(raw_chunks)
+        print(f"[pipeline] book_id={book_id} — {total} chunks to process")
+
+        rows_to_insert = []
+        for idx, chunk in enumerate(raw_chunks):
+            knowledge = _extract_knowledge_from_chunk(chunk, book_title)
+            if not knowledge:
+                time.sleep(1.2)
+                continue
+
+            # Each field becomes a separate row with its section type
+            field_map = {
+                'summary': knowledge.get('summary'),
+                'character': ' | '.join(knowledge.get('characters', [])) if knowledge.get('characters') else None,
+                'event':     ' | '.join(knowledge.get('events', []))     if knowledge.get('events')     else None,
+                'concept':   ' | '.join(knowledge.get('concepts', []))   if knowledge.get('concepts')   else None,
+                'definition':' | '.join(knowledge.get('definitions', [])) if knowledge.get('definitions') else None,
+            }
+
+            for section, text in field_map.items():
+                if text:
+                    rows_to_insert.append({
+                        'book_id': book_id,
+                        'section': section,
+                        'content': text,
+                        'embedding': None,  # we'll embed below
+                    })
+
+            # Respect Groq rate limit: ~1 request/sec
+            time.sleep(1.2)
+
+        # Embed all collected rows via HuggingFace API
+        if rows_to_insert:
+            texts = [r['content'] for r in rows_to_insert]
+            try:
+                EMBED_BATCH = 20
+                all_embeddings = []
+                for i in range(0, len(texts), EMBED_BATCH):
+                    embs = _hf_embed(texts[i:i + EMBED_BATCH])
+                    all_embeddings.extend(embs)
+                    time.sleep(0.5)
+                for i, emb in enumerate(all_embeddings):
+                    rows_to_insert[i]['embedding'] = emb
+            except Exception as emb_err:
+                print(f"[pipeline] Embedding failed: {emb_err}")
+                # Store without embeddings — still useful for keyword fallback
+
+            # Insert in batches
+            DB_BATCH = 50
+            for b in range(0, len(rows_to_insert), DB_BATCH):
+                supabase_local.table('book_knowledge').insert(rows_to_insert[b:b + DB_BATCH]).execute()
+
+        # Also run the raw chunk embeddings for fallback
+        index_book_chunks(book_id, content)
+
+        # Mark book as ready
+        supabase_local.table('books').update({'status': 'ready'}).eq('id', book_id).execute()
+        print(f"[pipeline] book_id={book_id} — DONE. {len(rows_to_insert)} knowledge rows inserted.")
+
+    except Exception as e:
+        print(f"[pipeline] FAILED for book_id={book_id}: {e}")
+        try:
+            supabase_local.table('books').update({'status': 'error'}).eq('id', book_id).execute()
+        except:
+            pass
 
 load_dotenv()
 
@@ -382,18 +521,27 @@ def upload_file():
                 'max_grade':   max_grade,
                 'year':        year,
                 'description': description,
+                'status':      'processing',   # hide from students during processing
             }).execute()
 
-            # RAG: chunk + embed the book for vector search
             new_book_id = insert_result.data[0]['id'] if insert_result.data else None
+            book_title  = title or filename.replace('.pdf','').replace('_',' ')
+
             if new_book_id and content:
-                try:
-                    index_book_chunks(new_book_id, content)
-                except Exception as emb_err:
-                    print(f"[upload] Embedding failed (non-fatal): {emb_err}")
-            
+                # Launch background thread — returns immediately to teacher
+                t = threading.Thread(
+                    target=process_book_in_background,
+                    args=(new_book_id, content, book_title),
+                    daemon=True
+                )
+                t.start()
+
             log_action('Uploaded File', f'Filename: {filename}')
-            return jsonify({'message': f'"{title or filename}" uploaded and indexed successfully!'}), 201
+            return jsonify({
+                'message': f'"{book_title}" uploaded! Processing is running in the background.',
+                'book_id': new_book_id,
+                'status': 'processing'
+            }), 201
         except Exception as e:
             print(f"Error during upload: {e}")
             return jsonify({'error': f'Upload error: {str(e)}'}), 500
@@ -412,11 +560,17 @@ def get_library():
 
     try:
         if not supabase: raise Exception("Supabase client not initialized")
-        response = supabase.table('books').select(
-            'id, filename, title, author, upload_date, subject, min_grade, max_grade, year, description'
-        ).execute()
+        role = session.get('role', 'Student')
+        query = supabase.table('books').select(
+            'id, filename, title, author, upload_date, subject, min_grade, max_grade, year, description, status'
+        )
+        # Students only see ready books; teachers/admins see all
+        if role == 'Student':
+            query = query.eq('status', 'ready')
+        response = query.execute()
         books = response.data
-        set_cache(cache_key, books, ex=120)  # cache for 2 minutes
+        if role == 'Student':
+            set_cache(cache_key, books, ex=120)  # only cache student view
         return jsonify({'books': books}), 200
     except Exception as e:
         print(f"Error fetching library: {e}")
@@ -506,6 +660,19 @@ def delete_book(book_id):
         print(f"Error deleting book: {e}")
         return jsonify({'error': 'An error occurred deleting the book'}), 500
 
+@app.route('/api/book/<int:book_id>/status', methods=['GET'])
+def book_status(book_id):
+    """Poll endpoint for Teacher Dashboard to check processing status."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        row = supabase.table('books').select('status, title').eq('id', book_id).execute()
+        if not row.data:
+            return jsonify({'error': 'Book not found'}), 404
+        return jsonify({'status': row.data[0].get('status', 'ready'), 'title': row.data[0].get('title', '')}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     if 'user_id' not in session:
@@ -573,28 +740,43 @@ def chat():
                     if best_page:
                         found_page = best_page
 
-                    # Build context via RAG search within this specific book
+                    # Build context via match_knowledge (AI-structured) with fallback to raw chunks
                     query_emb = get_embedding(query)
                     rag_context = None
                     if query_emb:
                         try:
-                            rag_result = supabase.rpc('match_chunks', {
+                            # Try structured knowledge first (best quality)
+                            know_result = supabase.rpc('match_knowledge', {
                                 'query_embedding': query_emb,
                                 'match_book_id': book_id,
-                                'match_count': 7,
-                                'match_subject': None,
+                                'match_count': 8,
                             }).execute()
-                            if rag_result.data and len(rag_result.data) > 0:
-                                rag_context = f"Document: {book_row['filename']}\n\n"
-                                for chunk in rag_result.data:
-                                    rag_context += f"{chunk['content']}\n\n"
-                        except Exception as re:
-                            print(f"[chat] Per-book RAG failed: {re}")
+                            if know_result.data and len(know_result.data) > 0:
+                                rag_context = f"Document: {book_row['filename']}\n"
+                                rag_context += "[AI-extracted knowledge from this book]\n\n"
+                                for k in know_result.data:
+                                    rag_context += f"[{k['section'].upper()}] {k['content']}\n\n"
+                        except Exception as ke:
+                            print(f"[chat] match_knowledge failed: {ke}")
+                            # Fallback to raw chunks
+                            try:
+                                chunk_result = supabase.rpc('match_chunks', {
+                                    'query_embedding': query_emb,
+                                    'match_book_id': book_id,
+                                    'match_count': 7,
+                                    'match_subject': None,
+                                }).execute()
+                                if chunk_result.data:
+                                    rag_context = f"Document: {book_row['filename']}\n\n"
+                                    for chunk in chunk_result.data:
+                                        rag_context += f"{chunk['content']}\n\n"
+                            except Exception as ce:
+                                print(f"[chat] Chunk fallback failed: {ce}")
 
                     if rag_context:
                         context = rag_context
                     else:
-                        # Fallback: first 8K chars if RAG unavailable
+                        # Last resort: first 8K chars
                         full_text = "\n".join(p['text'] for p in page_data)
                         context = f"Document: {book_row['filename']}\n\n"
                         context += full_text[:8000]
@@ -604,27 +786,41 @@ def chat():
 
         # ── Generic multi-book search (no book_id or fallback) ──────────────
         if not book_id:
-            # Try RAG vector search first
             query_emb = get_embedding(query)
             rag_used = False
 
             if query_emb:
                 try:
-                    rag_result = supabase.rpc('match_chunks', {
+                    # Try structured knowledge first across all books
+                    know_result = supabase.rpc('match_knowledge', {
                         'query_embedding': query_emb,
                         'match_book_id': None,
-                        'match_count': 5,
-                        'match_subject': None,
+                        'match_count': 8,
                     }).execute()
-
-                    if rag_result.data and len(rag_result.data) > 0:
-                        context = "Semantically matched excerpts from the student's library:\n\n"
-                        for chunk in rag_result.data:
-                            sim = chunk.get('similarity', 0)
-                            context += f"--- From {chunk['filename']} (relevance: {sim:.2f}) ---\n{chunk['content']}\n\n"
+                    if know_result.data and len(know_result.data) > 0:
+                        context = "AI-extracted knowledge from student's library:\n\n"
+                        for k in know_result.data:
+                            sim = k.get('similarity', 0)
+                            context += f"[{k['section'].upper()}] (relevance:{sim:.2f}) {k['content']}\n\n"
                         rag_used = True
-                except Exception as rag_err:
-                    print(f"[chat] RAG search failed, falling back to keyword: {rag_err}")
+                except Exception as ke:
+                    print(f"[chat] match_knowledge failed: {ke}")
+                    # Fallback to raw chunks
+                    try:
+                        rag_result = supabase.rpc('match_chunks', {
+                            'query_embedding': query_emb,
+                            'match_book_id': None,
+                            'match_count': 5,
+                            'match_subject': None,
+                        }).execute()
+                        if rag_result.data and len(rag_result.data) > 0:
+                            context = "Semantically matched excerpts from the student's library:\n\n"
+                            for chunk in rag_result.data:
+                                sim = chunk.get('similarity', 0)
+                                context += f"--- From {chunk['filename']} (relevance: {sim:.2f}) ---\n{chunk['content']}\n\n"
+                            rag_used = True
+                    except Exception as rag_err:
+                        print(f"[chat] RAG fallback failed: {rag_err}")
 
             # Fallback: keyword search if RAG unavailable or returned nothing
             if not rag_used:
@@ -1267,31 +1463,30 @@ def admin_create_admin():
 @app.route('/api/admin/reindex', methods=['POST'])
 @require_admin
 def admin_reindex():
-    """Re-download every PDF, re-extract text, and re-embed chunks for RAG."""
+    """Re-extract text + full AI knowledge extraction for all books (background threads)."""
     try:
-        rows = supabase.table('books').select('id, filename').execute()
+        rows = supabase.table('books').select('id, filename, title').execute()
         if not rows.data:
             return jsonify({'message': 'No books to re-index.', 'updated': 0}), 200
 
-        updated = 0
-        embedded = 0
+        launched = 0
         errors = []
         for book in rows.data:
             try:
                 signed = supabase.storage.from_('pdfs').create_signed_url(book['filename'], 300)
-                import urllib.request
                 pdf_bytes = urllib.request.urlopen(signed['signedURL']).read()
                 new_content = extract_text_from_pdf(io.BytesIO(pdf_bytes))
-                supabase.table('books').update({'content': new_content}).eq('id', book['id']).execute()
-                updated += 1
-
-                # RAG: re-embed chunks
-                try:
-                    index_book_chunks(book['id'], new_content)
-                    embedded += 1
-                except Exception as emb_err:
-                    errors.append(f"{book['filename']} (embed): {str(emb_err)}")
-                    print(f"[reindex] Embedding failed for {book['filename']}: {emb_err}")
+                # Update raw content
+                supabase.table('books').update({'content': new_content, 'status': 'processing'}).eq('id', book['id']).execute()
+                # Launch full knowledge pipeline in background
+                book_title = book.get('title') or book['filename'].replace('.pdf','').replace('_',' ')
+                t = threading.Thread(
+                    target=process_book_in_background,
+                    args=(book['id'], new_content, book_title),
+                    daemon=True
+                )
+                t.start()
+                launched += 1
             except Exception as be:
                 errors.append(f"{book['filename']}: {str(be)}")
                 print(f"[reindex] Failed for {book['filename']}: {be}")
@@ -1299,11 +1494,10 @@ def admin_reindex():
         if redis_client:
             redis_client.delete("library_books")
 
-        log_action('Re-Indexed Library', f'Updated {updated}/{len(rows.data)} books, embedded {embedded}')
+        log_action('Re-Indexed Library', f'Launched background processing for {launched}/{len(rows.data)} books')
         return jsonify({
-            'message': f'Re-indexed {updated}/{len(rows.data)} books. Embedded {embedded} for RAG.',
-            'updated': updated,
-            'embedded': embedded,
+            'message': f'Re-indexing launched for {launched}/{len(rows.data)} books. Knowledge extraction running in background.',
+            'launched': launched,
             'total': len(rows.data),
             'errors': errors,
         }), 200
