@@ -213,11 +213,132 @@ const OverviewTab = ({ stats, logs }) => {
 
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: USERS
+// ── Full Edit Modal ───────────────────────────────────────────────────────────
+const FullEditModal = ({ userId, onClose, onSaved, showToast }) => {
+    const [data, setData] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [showPw, setShowPw] = useState(false);
+    const [pw, setPw] = useState('');
+    const GRADES = [8,9,10,11,12];
+    const inp = {width:'100%',padding:'9px 12px',borderRadius:9,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',color:'#f1f5f9',fontSize:'0.85rem',outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
+    const lbl = (t) => <div style={{fontSize:'0.68rem',fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:5}}>{t}</div>;
+
+    useEffect(() => {
+        fetch(`/api/admin/users/${userId}/full`).then(r=>r.json()).then(d=>{
+            const u = d.user||{};
+            const st = u.stats||{};
+            setData({
+                username: u.username||'', role: u.role||'Student',
+                grade_level: u.grade_level||'', teaching_grades: u.teaching_grades||[],
+                banned: u.banned||false,
+                streak: st.streak||0, questions: st.questions_asked||0,
+                quizzes: st.quizzes_taken||0, best: st.best_score||0, avg: st.avg_score||0,
+            });
+        }).catch(()=>showToast('Failed to load user.',false));
+    },[userId]);
+
+    const upd = (k,v) => setData(p=>({...p,[k]:v}));
+    const toggleGrade = g => setData(p=>({...p,teaching_grades:p.teaching_grades.includes(g)?p.teaching_grades.filter(x=>x!==g):[...p.teaching_grades,g]}));
+
+    const save = async () => {
+        setSaving(true);
+        const payload = {
+            username: data.username, role: data.role,
+            grade_level: data.grade_level||null,
+            teaching_grades: data.teaching_grades,
+            banned: data.banned,
+            stats: { streak:+data.streak, questions_asked:+data.questions, quizzes_taken:+data.quizzes, best_score:+data.best, avg_score:+data.avg },
+        };
+        if(pw) payload.password = pw;
+        const r = await fetch(`/api/admin/users/${userId}/full`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        setSaving(false);
+        if(r.ok){showToast('User saved!');onSaved();}else showToast('Save failed.',false);
+    };
+
+    if(!data) return (
+        <Modal title="Loading…" onClose={onClose} width={520}>
+            <div style={{display:'flex',justifyContent:'center',padding:40}}><div className="spin" style={{width:28,height:28,border:'3px solid rgba(99,102,241,0.2)',borderTopColor:'#6366f1',borderRadius:'50%'}}/></div>
+        </Modal>
+    );
+
+    return (
+        <Modal title={`✏️ Full Edit — ${data.username}`} onClose={onClose} width={560}>
+            <div style={{display:'flex',flexDirection:'column',gap:16,maxHeight:'70vh',overflowY:'auto',paddingRight:4}}>
+                {/* Identity */}
+                <div style={{padding:'16px',borderRadius:12,background:'rgba(99,102,241,0.06)',border:'1px solid rgba(99,102,241,0.15)'}}>
+                    <div style={{fontWeight:700,color:'#818cf8',fontSize:'0.78rem',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.06em'}}>Identity</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                        <div>{lbl('Username')}<input value={data.username} onChange={e=>upd('username',e.target.value)} style={inp}/></div>
+                        <div>{lbl('Role')}
+                            <select value={data.role} onChange={e=>upd('role',e.target.value)} style={inp}>
+                                {['Student','Teacher','Admin'].map(r=><option key={r} value={r} style={{background:'#0d1117'}}>{r}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div style={{marginTop:12,position:'relative'}}>
+                        {lbl('New Password (leave blank to keep current)')}
+                        <input type={showPw?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" style={{...inp,paddingRight:40}}/>
+                        <button onClick={()=>setShowPw(s=>!s)} style={{position:'absolute',right:10,bottom:8,background:'transparent',border:'none',color:'#64748b',cursor:'pointer',display:'flex'}}>{showPw?<EyeOff size={14}/>:<Eye size={14}/>}</button>
+                    </div>
+                </div>
+
+                {/* Grade / Teaching */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div style={{padding:'14px',borderRadius:12,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                        {lbl('Grade Level')}
+                        <select value={data.grade_level} onChange={e=>upd('grade_level',e.target.value)} style={inp}>
+                            <option value="" style={{background:'#0d1117'}}>None</option>
+                            {GRADES.map(g=><option key={g} value={g} style={{background:'#0d1117'}}>Grade {g}</option>)}
+                        </select>
+                    </div>
+                    <div style={{padding:'14px',borderRadius:12,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                        {lbl('Banned?')}
+                        <button onClick={()=>upd('banned',!data.banned)} style={{width:'100%',padding:'8px',borderRadius:9,border:`1px solid ${data.banned?'rgba(239,68,68,0.4)':'rgba(255,255,255,0.1)'}`,background:data.banned?'rgba(239,68,68,0.12)':'transparent',color:data.banned?'#f87171':'#64748b',cursor:'pointer',fontWeight:700,fontFamily:'inherit'}}>
+                            {data.banned?'🚫 Banned — Click to Unban':'✓ Active — Click to Ban'}
+                        </button>
+                    </div>
+                </div>
+
+                {data.role==='Teacher' && (
+                    <div style={{padding:'14px',borderRadius:12,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                        {lbl('Teaching Grades')}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                            {GRADES.map(g=><button key={g} onClick={()=>toggleGrade(g)} style={{padding:'5px 14px',borderRadius:100,border:`1px solid ${data.teaching_grades.includes(g)?'rgba(99,102,241,0.5)':'rgba(255,255,255,0.1)'}`,background:data.teaching_grades.includes(g)?'rgba(99,102,241,0.12)':'transparent',color:data.teaching_grades.includes(g)?'#a5b4fc':'#64748b',fontWeight:700,fontSize:'0.78rem',cursor:'pointer',fontFamily:'inherit'}}>Gr {g}</button>)}
+                        </div>
+                    </div>
+                )}
+
+                {/* Stats Editor */}
+                <div style={{padding:'16px',borderRadius:12,background:'rgba(251,191,36,0.04)',border:'1px solid rgba(251,191,36,0.15)'}}>
+                    <div style={{fontWeight:700,color:'#fbbf24',fontSize:'0.78rem',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.06em'}}>Stats Override</div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+                        {[['Streak🔥','streak'],['Questions💬','questions'],['Quizzes🎯','quizzes'],['Best🏆','best'],['Avg📊','avg']].map(([label,key])=>(
+                            <div key={key}>
+                                {lbl(label)}
+                                <input type="number" min={0} value={data[key]} onChange={e=>upd(key,e.target.value)} style={{...inp,textAlign:'center'}}/>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
+                <button onClick={onClose} style={cancelBtn}>Cancel</button>
+                <button onClick={save} disabled={saving} style={{...modalBtnBase,border:'1px solid rgba(99,102,241,0.4)',background:'rgba(99,102,241,0.15)',color:'#818cf8'}}>
+                    {saving?'Saving…':'💾 Save All Changes'}
+                </button>
+            </div>
+        </Modal>
+    );
+};
+
 // ────────────────────────────────────────────────────────────────────────────────
 const UsersTab = ({ users, onRefresh, showToast, onViewAs }) => {
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('All');
     const [modal, setModal] = useState(null);
+    const [editUserId, setEditUserId] = useState(null);
+    const [selected, setSelected] = useState(new Set());
 
     const filtered = users.filter(u => {
         const mR = roleFilter==='All'||u.role===roleFilter;
@@ -225,20 +346,6 @@ const UsersTab = ({ users, onRefresh, showToast, onViewAs }) => {
         return mR && mS;
     });
 
-    const doRole = async (uid, role) => {
-        const r = await fetch(`/api/admin/users/${uid}/role`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({role})});
-        if(r.ok){showToast(`Role → ${role}`);onRefresh();}else showToast('Role update failed.',false);
-    };
-    const doPassword = async (uid, pw) => {
-        const r = await fetch(`/api/admin/users/${uid}/reset_password`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:pw})});
-        setModal(null);
-        if(r.ok)showToast('Password reset.');else showToast('Reset failed.',false);
-    };
-    const doGrade = async (uid, grade) => {
-        const r = await fetch(`/api/admin/users/${uid}/grade`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade_level:grade})});
-        setModal(null);
-        if(r.ok){showToast('Grade updated.');onRefresh();}else showToast('Grade update failed.',false);
-    };
     const doDelete = async (uid, username) => {
         const r = await fetch(`/api/admin/users/${uid}`,{method:'DELETE'});
         setModal(null);
@@ -248,63 +355,92 @@ const UsersTab = ({ users, onRefresh, showToast, onViewAs }) => {
         const r = await fetch(`/api/admin/users/${u.id}/ban`,{method:'POST'});
         if(r.ok){const d=await r.json();showToast(d.message);onRefresh();}else showToast('Ban failed.',false);
     };
+    const bulkDelete = async () => {
+        if(selected.size===0) return;
+        let ok=0;
+        for(const id of selected){ const r=await fetch(`/api/admin/users/${id}`,{method:'DELETE'}); if(r.ok) ok++; }
+        setSelected(new Set()); setModal(null); showToast(`Deleted ${ok} user(s).`); onRefresh();
+    };
+    const toggleSel = (id) => setSelected(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
+    const selAll = () => setSelected(filtered.length===selected.size?new Set():new Set(filtered.map(u=>u.id)));
 
     return (
         <div>
-            {modal?.type==='password' && <PasswordModal username={modal.u.username} onSubmit={pw=>doPassword(modal.u.id,pw)} onClose={()=>setModal(null)}/>}
-            {modal?.type==='grade'    && <GradeModal username={modal.u.username} currentGrade={modal.u.grade_level} onSubmit={g=>doGrade(modal.u.id,g)} onClose={()=>setModal(null)}/>}
-            {modal?.type==='delete'   && <ConfirmModal title="Delete User" message={`Permanently delete "${modal.u.username}"? All their data will be removed.`} onConfirm={()=>doDelete(modal.u.id,modal.u.username)} onClose={()=>setModal(null)}/>}
+            {modal?.type==='delete' && <ConfirmModal title="Delete User" message={`Permanently delete "${modal.u.username}"?`} onConfirm={()=>doDelete(modal.u.id,modal.u.username)} onClose={()=>setModal(null)}/>}
+            {modal?.type==='bulk_delete' && <ConfirmModal title={`Delete ${selected.size} Users`} message="This will permanently delete all selected users and their data." onConfirm={bulkDelete} onClose={()=>setModal(null)}/>}
+            {editUserId && <FullEditModal userId={editUserId} showToast={showToast} onClose={()=>setEditUserId(null)} onSaved={()=>{setEditUserId(null);onRefresh();}}/>}
 
-            <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
-                <div style={{ position:'relative', flex:1, minWidth:200 }}>
-                    <Search size={14} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'#475569' }}/>
+            <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+                <div style={{position:'relative',flex:1,minWidth:200}}>
+                    <Search size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#475569'}}/>
                     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search username…" style={searchStyle}/>
                 </div>
-                <div style={{ display:'flex', gap:6 }}>
+                <div style={{display:'flex',gap:6}}>
                     {['All','Student','Teacher','Admin'].map(r=><button key={r} onClick={()=>setRoleFilter(r)} style={chipBtn(roleFilter===r)}>{r}</button>)}
                 </div>
-                <span style={{ color:'#475569', fontSize:'0.78rem' }}>{filtered.length} users</span>
+                <span style={{color:'#475569',fontSize:'0.78rem'}}>{filtered.length} users</span>
+                {selected.size>0 && <button onClick={()=>setModal({type:'bulk_delete'})} style={actionBtn('rgba(239,68,68,0.4)','rgba(239,68,68,0.12)','#f87171')}>🗑 Delete {selected.size} Selected</button>}
             </div>
 
-            <div style={{ borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.84rem' }}>
+            <div style={{borderRadius:16,overflow:'hidden',border:'1px solid rgba(255,255,255,0.06)'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'0.83rem'}}>
                     <thead>
-                        <tr style={{ background:'rgba(0,0,0,0.35)' }}>
-                            {['User','Role','Grade','Joined','Actions'].map((h,i)=><th key={h} style={theadTh(i===4)}>{h}</th>)}
+                        <tr style={{background:'rgba(0,0,0,0.35)'}}>
+                            <th style={{padding:'12px 14px',width:36}}><input type="checkbox" onChange={selAll} checked={selected.size===filtered.length&&filtered.length>0} style={{cursor:'pointer'}}/></th>
+                            {['User','Role','Grade / Info','Stats','Actions'].map((h,i)=><th key={h} style={theadTh(i===4)}>{h}</th>)}
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.length===0 ? <tr><td colSpan={5} style={{ padding:36, textAlign:'center', color:'#334155' }}>No users found.</td></tr>
-                        : filtered.map((u,i)=>{
-                            const c = ROLE_C[u.role]||ROLE_C.Student;
-                            return (
-                                <tr key={u.id} style={{ borderTop:'1px solid rgba(255,255,255,0.04)', background:i%2===0?'transparent':'rgba(255,255,255,0.01)' }}>
-                                    <td style={{ padding:'12px 18px' }}>
-                                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                                            <div style={{ width:32, height:32, borderRadius:'50%', background:c.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.8rem', fontWeight:800, color:c.text, flexShrink:0, border:`1px solid ${c.border}` }}>{(u.username||'?')[0].toUpperCase()}</div>
-                                            <div>
-                                                <div style={{ fontWeight:600, color:'#f1f5f9' }}>{u.username}</div>
-                                                <div style={{ fontSize:'0.68rem', color:'#334155', fontFamily:'monospace' }}>{String(u.id).slice(0,14)}…</div>
+                        {filtered.length===0
+                            ? <tr><td colSpan={6} style={{padding:36,textAlign:'center',color:'#334155'}}>No users found.</td></tr>
+                            : filtered.map((u,i)=>{
+                                const c=ROLE_C[u.role]||ROLE_C.Student;
+                                const st=u.stats||{};
+                                const isBanned=u.banned;
+                                return (
+                                    <tr key={u.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)',background:isBanned?'rgba(239,68,68,0.04)':i%2===0?'transparent':'rgba(255,255,255,0.01)',opacity:isBanned?0.75:1}}>
+                                        <td style={{padding:'10px 14px',textAlign:'center'}}><input type="checkbox" checked={selected.has(u.id)} onChange={()=>toggleSel(u.id)} style={{cursor:'pointer'}}/></td>
+                                        <td style={{padding:'10px 14px'}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:10}}>
+                                                <div style={{width:34,height:34,borderRadius:'50%',background:c.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.85rem',fontWeight:800,color:c.text,flexShrink:0,border:`1px solid ${c.border}`}}>{(u.username||'?')[0].toUpperCase()}</div>
+                                                <div>
+                                                    <div style={{fontWeight:700,color:'#f1f5f9',display:'flex',alignItems:'center',gap:6}}>
+                                                        {u.username}
+                                                        {isBanned && <span style={{fontSize:'0.62rem',padding:'1px 7px',borderRadius:100,background:'rgba(239,68,68,0.15)',color:'#f87171',border:'1px solid rgba(239,68,68,0.3)',fontWeight:800}}>BANNED</span>}
+                                                    </div>
+                                                    <div style={{fontSize:'0.66rem',color:'#334155',fontFamily:'monospace'}}>ID:{String(u.id).slice(0,12)}…</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding:'12px 18px' }}>
-                                        <select value={u.role||'Student'} onChange={e=>doRole(u.id,e.target.value)} style={{ padding:'5px 10px', borderRadius:8, background:'rgba(0,0,0,0.3)', border:`1px solid ${c.border}`, color:c.text, fontSize:'0.78rem', fontWeight:700, outline:'none', cursor:'pointer' }}>
-                                            {['Student','Teacher','Admin'].map(r=><option key={r} value={r} style={{background:'#0d1117'}}>{r}</option>)}
-                                        </select>
-                                    </td>
-                                    <td style={{ padding:'12px 18px', color:'#94a3b8', fontSize:'0.82rem' }}>{u.grade_level?`Grade ${u.grade_level}`:<span style={{color:'#334155'}}>—</span>}</td>
-                                    <td style={{ padding:'12px 18px', color:'#475569', fontSize:'0.76rem', fontFamily:'monospace', whiteSpace:'nowrap' }}>{u.created_at?new Date(u.created_at).toLocaleDateString():'—'}</td>
-                                    <td style={{ padding:'12px 18px', textAlign:'right' }}>
-                                        <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
-                                            <button onClick={()=>setModal({type:'grade',u})} style={actionBtn('rgba(99,102,241,0.3)','rgba(99,102,241,0.08)','#818cf8')}><GraduationCap size={11}/> Grade</button>
-                                            <button onClick={()=>setModal({type:'password',u})} style={actionBtn('rgba(251,191,36,0.3)','rgba(251,191,36,0.08)','#fbbf24')}><KeyRound size={11}/> Reset PW</button>
-                                            <button onClick={()=>setModal({type:'delete',u})} style={actionBtn('rgba(239,68,68,0.3)','rgba(239,68,68,0.08)','#f87171')}><Trash2 size={11}/> Delete</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
+                                        </td>
+                                        <td style={{padding:'10px 14px'}}>
+                                            <select value={u.role||'Student'} onChange={e=>{fetch(`/api/admin/users/${u.id}/role`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:e.target.value})}).then(r=>{if(r.ok){showToast(`Role → ${e.target.value}`);onRefresh();}else showToast('Failed',false);});}} style={{padding:'4px 8px',borderRadius:8,background:'rgba(0,0,0,0.3)',border:`1px solid ${c.border}`,color:c.text,fontSize:'0.76rem',fontWeight:700,outline:'none',cursor:'pointer'}}>
+                                                {['Student','Teacher','Admin'].map(r=><option key={r} value={r} style={{background:'#0d1117'}}>{r}</option>)}
+                                            </select>
+                                        </td>
+                                        <td style={{padding:'10px 14px',color:'#94a3b8',fontSize:'0.8rem'}}>
+                                            <div>{u.grade_level?`Grade ${u.grade_level}`:u.teaching_grades?.length?`Teaches: ${u.teaching_grades.join(', ')}`:<span style={{color:'#334155'}}>—</span>}</div>
+                                            <div style={{fontSize:'0.65rem',color:'#475569'}}>{u.created_at?`Joined ${new Date(u.created_at).toLocaleDateString()}`:'—'}</div>
+                                        </td>
+                                        <td style={{padding:'10px 14px'}}>
+                                            <div style={{display:'flex',gap:10,fontSize:'0.72rem',color:'#64748b'}}>
+                                                <span title="Streak">🔥{st.streak||0}</span>
+                                                <span title="Questions">💬{st.questions_asked||0}</span>
+                                                <span title="Quizzes">🎯{st.quizzes_taken||0}</span>
+                                                <span title="Best Score">🏆{st.best_score||0}</span>
+                                            </div>
+                                        </td>
+                                        <td style={{padding:'10px 14px',textAlign:'right'}}>
+                                            <div style={{display:'flex',gap:5,justifyContent:'flex-end',flexWrap:'wrap'}}>
+                                                <button onClick={()=>setEditUserId(u.id)} style={actionBtn('rgba(99,102,241,0.35)','rgba(99,102,241,0.1)','#818cf8')}>✏️ Edit All</button>
+                                                <button onClick={()=>onViewAs(u)} style={actionBtn('rgba(52,211,153,0.3)','rgba(52,211,153,0.08)','#34d399')}>👁 View As</button>
+                                                <button onClick={()=>doBan(u)} style={actionBtn(isBanned?'rgba(251,191,36,0.3)':'rgba(239,68,68,0.25)',isBanned?'rgba(251,191,36,0.08)':'rgba(239,68,68,0.07)',isBanned?'#fbbf24':'#f87171')}>{isBanned?'Unban':'Ban'}</button>
+                                                <button onClick={()=>setModal({type:'delete',u})} style={actionBtn('rgba(239,68,68,0.3)','rgba(239,68,68,0.08)','#f87171')}><Trash2 size={11}/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        }
                     </tbody>
                 </table>
             </div>
@@ -422,34 +558,55 @@ const LibraryTab = ({ books, setBooks, showToast }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // TAB: ACTIVITY LOGS
 // ────────────────────────────────────────────────────────────────────────────────
-const LogsTab = ({ logs }) => {
+const LogsTab = ({ logs, showToast, onRefresh }) => {
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('All');
+    const [actionFilter, setActionFilter] = useState('All');
     const [page, setPage] = useState(0);
+    const [clearing, setClearing] = useState(false);
+    const [confirmClear, setConfirmClear] = useState(false);
     const PER = 50;
+
+    const ACTION_TYPES = ['All','Login','Chat','Quiz','Plan','Admin','Failed'];
+
+    const clearLogs = async () => {
+        setClearing(true);
+        const r = await fetch('/api/admin/logs/clear', {method:'DELETE'});
+        setClearing(false); setConfirmClear(false);
+        if(r.ok){showToast('All logs cleared.');onRefresh();}else showToast('Clear failed.',false);
+    };
 
     const filtered = logs.filter(l=>{
         const mR = roleFilter==='All'||l.role===roleFilter;
+        const mA = actionFilter==='All'||(l.action||'').toLowerCase().includes(actionFilter.toLowerCase());
         const s = search.toLowerCase();
         const mS = !s||(l.username||'').toLowerCase().includes(s)||(l.action||'').toLowerCase().includes(s)||(l.detail||'').toLowerCase().includes(s);
-        return mR&&mS;
+        return mR&&mA&&mS;
     });
     const pages = Math.ceil(filtered.length/PER)||1;
     const paged = filtered.slice(page*PER,(page+1)*PER);
-    useEffect(()=>setPage(0),[search,roleFilter]);
+    useEffect(()=>setPage(0),[search,roleFilter,actionFilter]);
 
     return (
         <div>
-            <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
-                <div style={{ position:'relative', flex:1, minWidth:200 }}>
-                    <Search size={14} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'#475569' }}/>
+            {confirmClear && <ConfirmModal title="Clear All Logs" message={`This will permanently delete all ${logs.length} activity log entries. Cannot be undone.`} onConfirm={clearLogs} onClose={()=>setConfirmClear(false)}/>}
+            <div style={{display:'flex',gap:10,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
+                <div style={{position:'relative',flex:1,minWidth:200}}>
+                    <Search size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#475569'}}/>
                     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search user, action, detail…" style={searchStyle}/>
                 </div>
-                <div style={{ display:'flex', gap:6 }}>
+                <div style={{display:'flex',gap:5}}>
                     {['All','Student','Teacher','Admin'].map(r=><button key={r} onClick={()=>setRoleFilter(r)} style={chipBtn(roleFilter===r)}>{r}</button>)}
                 </div>
-                <span style={{ color:'#475569', fontSize:'0.78rem', whiteSpace:'nowrap' }}>{filtered.length} events</span>
+                <button onClick={()=>setConfirmClear(true)} disabled={clearing||logs.length===0} style={actionBtn('rgba(239,68,68,0.3)','rgba(239,68,68,0.08)','#f87171')}>
+                    <Trash2 size={11}/> Clear All ({logs.length})
+                </button>
+                <span style={{color:'#475569',fontSize:'0.78rem',whiteSpace:'nowrap'}}>{filtered.length} events</span>
             </div>
+            <div style={{display:'flex',gap:5,marginBottom:14,flexWrap:'wrap'}}>
+                {ACTION_TYPES.map(a=><button key={a} onClick={()=>setActionFilter(a)} style={{...chipBtn(actionFilter===a),fontSize:'0.72rem',padding:'4px 10px'}}>{a}</button>)}
+            </div>
+
             <div style={{ background:'#020408', border:'1px solid #0f172a', borderRadius:14, overflow:'hidden' }}>
                 <div style={{ padding:'10px 18px', borderBottom:'1px solid #0f172a', display:'flex', alignItems:'center', gap:8 }}>
                     <Terminal size={13} color="#10b981"/>
