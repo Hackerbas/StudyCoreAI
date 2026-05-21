@@ -257,6 +257,10 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_local_
 
 ALLOWED_EXTENSIONS = {'pdf'}
 
+# Global handler — catches GroqThrottleError from any endpoint
+# (defined after the class is declared below, registered via decorator then)
+
+
 # Initialize Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -278,9 +282,32 @@ GROQ_KEYS = [
     ] if k
 ]
 
+class GroqThrottleError(Exception):
+    """Raised when all Groq keys/models are exhausted or request is too large."""
+    pass
+
+@app.errorhandler(GroqThrottleError)
+def handle_groq_throttle(e):
+    """Globally catch AI rate-limit errors and show a friendly message."""
+    return jsonify({
+        'error': 'You\'re going a bit too fast! ⚡ Please wait a few seconds and try again.',
+        'throttled': True,
+    }), 429
+
+def _is_throttle_error(e: Exception) -> bool:
+    """Return True for any Groq rate-limit or token-too-large error."""
+    msg = str(e).lower()
+    return (
+        isinstance(e, RateLimitError)
+        or 'rate_limit_exceeded' in msg
+        or 'tokens per minute' in msg
+        or 'request too large' in msg
+        or '413' in msg
+    )
+
 def groq_chat_with_rotation(messages, model='llama-3.3-70b-versatile', response_format=None, temperature=0.5):
-    """Try each Groq API key, then fall back to lighter models on rate limit."""
-    # Model fallback chain: if primary is exhausted, try progressively lighter models
+    """Try each Groq API key, then fall back to lighter models on rate limit.
+    Raises GroqThrottleError with a friendly message when all options exhausted."""
     FALLBACK_MODELS = [
         model,
         'llama-3.1-8b-instant',
@@ -295,16 +322,16 @@ def groq_chat_with_rotation(messages, model='llama-3.3-70b-versatile', response_
                 if response_format:
                     kwargs['response_format'] = response_format
                 return client.chat.completions.create(**kwargs)
-            except RateLimitError as e:
-                err_str = str(e)
-                print(f'[groq] Key ...{key[-6:]} rate limited on {try_model}: {err_str[:80]}')
-                last_error = e
-                continue
             except Exception as e:
-                raise e  # non-rate-limit errors bubble up immediately
-        # All keys exhausted for this model — try next model in fallback chain
-        print(f'[groq] All keys exhausted for {try_model}, trying next fallback model...')
-    raise last_error or Exception('All Groq API keys and fallback models are exhausted.')
+                if _is_throttle_error(e):
+                    print(f'[groq] Throttle on ...{key[-6:]} / {try_model}: {str(e)[:80]}')
+                    last_error = e
+                    continue
+                raise  # non-throttle errors bubble up immediately
+        print(f'[groq] All keys exhausted for {try_model}, trying next model...')
+    raise GroqThrottleError(
+        'You are sending requests too quickly. Please wait a moment and try again.'
+    )
 
 
 # --- Helper Functions ---
@@ -1783,7 +1810,169 @@ def admin_book_chunk_count(book_id):
         return jsonify({'error': str(e)}), 500
 
 
-# ─── Teacher Curriculum Planner ──────────────────────────────────────────────
+# ── NEW ADMIN POWER ENDPOINTS ─────────────────────────────────────────────────
+
+@app.route('/api/admin/maintenance', methods=['GET', 'POST'])
+@require_admin
+def admin_maintenance():
+    """Get or set maintenance mode."""
+    try:
+        if request.method == 'GET':
+            row = supabase.table('site_settings').select('value').eq('key', 'maintenance_mode').execute()
+            enabled = (row.data[0]['value'] if row.data else False)
+            msg_row = supabase.table('site_settings').select('value').eq('key', 'maintenance_message').execute()
+            msg = msg_row.data[0]['value'] if msg_row.data else 'We\'ll be back soon! 🚀'
+            return jsonify({'enabled': enabled, 'message': msg}), 200
+        data = request.json or {}
+        if 'enabled' in data:
+            supabase.table('site_settings').upsert({'key': 'maintenance_mode', 'value': data['enabled']}).execute()
+            log_action('Maintenance Mode', f'Set to {data["enabled"]}')
+        if 'message' in data:
+            supabase.table('site_settings').upsert({'key': 'maintenance_message', 'value': data['message']}).execute()
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/announcement', methods=['GET', 'POST', 'DELETE'])
+@require_admin
+def admin_announcement():
+    """Get, set, or clear the site-wide announcement banner."""
+    try:
+        if request.method == 'GET':
+            row = supabase.table('site_settings').select('value').eq('key', 'announcement').execute()
+            return jsonify({'announcement': row.data[0]['value'] if row.data else None}), 200
+        if request.method == 'DELETE':
+            supabase.table('site_settings').upsert({'key': 'announcement', 'value': None}).execute()
+            log_action('Announcement Cleared', '')
+            return jsonify({'ok': True}), 200
+        data = request.json or {}
+        supabase.table('site_settings').upsert({'key': 'announcement', 'value': data.get('text', '')}).execute()
+        log_action('Announcement Set', data.get('text', '')[:80])
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/users/create_any', methods=['POST'])
+@require_admin
+def admin_create_any_user():
+    """Create any type of user (Student/Teacher/Admin) with full fields."""
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    role     = data.get('role', 'Student')
+    grade    = data.get('grade_level')
+    teaching_grades = data.get('teaching_grades', [])
+    if not username or len(password) < 6:
+        return jsonify({'error': 'Username required and password must be 6+ chars'}), 400
+    if role not in ('Student', 'Teacher', 'Admin'):
+        return jsonify({'error': 'Invalid role'}), 400
+    try:
+        existing = supabase.table('users').select('id').eq('username', username).execute()
+        if existing.data:
+            return jsonify({'error': 'Username already taken'}), 409
+        hashed = generate_password_hash(password)
+        row = {'username': username, 'password': hashed, 'role': role}
+        if grade: row['grade_level'] = int(grade)
+        if teaching_grades: row['teaching_grades'] = teaching_grades
+        result = supabase.table('users').insert(row).execute()
+        log_action('Admin Created User', f'{role}: {username}')
+        return jsonify({'message': f'{role} "{username}" created.', 'user': result.data[0] if result.data else {}}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/users/<string:user_id>/full', methods=['GET', 'PUT'])
+@require_admin
+def admin_user_full(user_id):
+    """Get or update any field of a user."""
+    try:
+        if request.method == 'GET':
+            row = supabase.table('users').select('id,username,role,grade_level,teaching_grades,stats,banned,created_at').eq('id', user_id).execute()
+            if not row.data: return jsonify({'error': 'User not found'}), 404
+            return jsonify({'user': row.data[0]}), 200
+        data = request.json or {}
+        allowed = {'username', 'role', 'grade_level', 'teaching_grades', 'stats', 'banned'}
+        update = {k: v for k, v in data.items() if k in allowed}
+        if 'password' in data and data['password']:
+            update['password'] = generate_password_hash(data['password'])
+        if not update: return jsonify({'error': 'Nothing to update'}), 400
+        supabase.table('users').update(update).eq('id', user_id).execute()
+        log_action('Admin Full User Edit', f'User {user_id}: fields {list(update.keys())}')
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/logs/clear', methods=['DELETE'])
+@require_admin
+def admin_logs_clear():
+    """Delete all activity logs."""
+    try:
+        supabase.table('activity_logs').delete().neq('id', 0).execute()
+        log_action('Logs Cleared', 'All activity logs deleted by admin')
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/system_health', methods=['GET'])
+@require_admin
+def admin_system_health():
+    """Return system health info."""
+    import sys, platform
+    try:
+        checks = {
+            'supabase': supabase is not None,
+            'groq_keys': len(GROQ_KEYS),
+            'python': sys.version,
+            'platform': platform.system(),
+        }
+        # Test supabase connectivity
+        try:
+            supabase.table('users').select('id', count='exact').limit(1).execute()
+            checks['supabase_ok'] = True
+        except Exception:
+            checks['supabase_ok'] = False
+        return jsonify(checks), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/live_quizzes', methods=['GET'])
+@require_admin
+def admin_live_quizzes():
+    """List all live quiz sessions."""
+    try:
+        res = supabase.table('live_quiz_sessions').select('code,teacher_name,status,current_q,created_at').order('created_at', desc=True).limit(50).execute()
+        return jsonify({'sessions': res.data or []}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/live_quizzes/<string:code>', methods=['DELETE'])
+@require_admin
+def admin_delete_live_quiz(code):
+    """Delete a live quiz session and its data."""
+    try:
+        supabase.table('live_quiz_answers').delete().eq('code', code.upper()).execute()
+        supabase.table('live_quiz_participants').delete().eq('code', code.upper()).execute()
+        supabase.table('live_quiz_sessions').delete().eq('code', code.upper()).execute()
+        log_action('Admin Deleted Quiz', f'Code: {code}')
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/public/settings', methods=['GET'])
+def public_settings():
+    """Public endpoint — returns maintenance mode and announcement for all users."""
+    try:
+        rows = supabase.table('site_settings').select('key,value').execute()
+        settings = {r['key']: r['value'] for r in (rows.data or [])}
+        return jsonify({
+            'maintenance': settings.get('maintenance_mode', False),
+            'maintenance_message': settings.get('maintenance_message', "We'll be back soon! 🚀"),
+            'announcement': settings.get('announcement'),
+        }), 200
+    except Exception:
+        return jsonify({'maintenance': False, 'announcement': None}), 200
+
+
+
 
 @app.route('/api/teacher/curriculum_plan', methods=['POST'])
 def teacher_curriculum_plan():

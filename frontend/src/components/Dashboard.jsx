@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import TeacherDashboard from './TeacherDashboard';
 import TeacherStatsView from './TeacherStatsView';
@@ -41,6 +41,17 @@ const Dashboard = () => {
     const [view, setView] = useState('chat');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const { t, lang, setLang } = useLanguage();
+    const [announcement, setAnnouncement] = useState('');
+    const [annDismissed, setAnnDismissed] = useState(false);
+    const [maintenance, setMaintenance] = useState(false);
+    const [maintMsg, setMaintMsg] = useState("We'll be back soon! 🚀");
+
+    useEffect(() => {
+        fetch('/api/public/settings').then(r=>r.json()).then(d=>{
+            if(d.maintenance && user?.role !== 'Admin') { setMaintenance(true); setMaintMsg(d.maintenance_message||maintMsg); }
+            if(d.announcement) setAnnouncement(d.announcement);
+        }).catch(()=>{});
+    }, []);
 
     const [chats, setChats] = React.useState(() => {
         try {
@@ -98,6 +109,16 @@ const Dashboard = () => {
 
     if (isAdmin) return <AdminPanel />;
 
+    // Maintenance mode gate (non-admins only)
+    if (maintenance) return (
+        <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:20, background:'#060913', color:'#f1f5f9', textAlign:'center', padding:40 }}>
+            <div style={{ fontSize:'4rem', marginBottom:8 }}>🔧</div>
+            <h1 style={{ fontSize:'2rem', fontWeight:900, marginBottom:8 }}>Under Maintenance</h1>
+            <p style={{ color:'#64748b', fontSize:'1rem', maxWidth:480, lineHeight:1.7 }}>{maintMsg}</p>
+            <p style={{ color:'#334155', fontSize:'0.8rem', marginTop:12 }}>StudyCoreAI — Check back soon.</p>
+        </div>
+    );
+
     const navItems = [
         { id:'chat',   icon:<MessageSquare size={18}/>, label: t('dashboard') },
         { id:'bookAI', icon:<BookOpen size={18}/>,      label:'BookAI'  },
@@ -111,7 +132,15 @@ const Dashboard = () => {
     const hideTopBar = view === 'bookAI';
 
     return (
-        <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
+        <div style={{ display:'flex', height:'100vh', overflow:'hidden', flexDirection:'column' }}>
+            {/* Announcement Banner */}
+            {announcement && !annDismissed && (
+                <div style={{ background:'rgba(251,191,36,0.12)', borderBottom:'1px solid rgba(251,191,36,0.25)', padding:'10px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexShrink:0 }}>
+                    <span style={{ color:'#fbbf24', fontSize:'0.88rem', fontWeight:600 }}>📢 {announcement}</span>
+                    <button onClick={()=>setAnnDismissed(true)} style={{ background:'transparent', border:'none', color:'#92400e', cursor:'pointer', display:'flex', padding:4, borderRadius:6 }}>✕</button>
+                </div>
+            )}
+            <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
             <ChangelogPopup />
 
             {/* ── Sidebar ── */}
@@ -276,6 +305,7 @@ const Dashboard = () => {
                     {view==='stats'  && (isTeacher ? <TeacherStatsView /> : <StatsView/>)}
                     {view==='manage' && isTeacher && <TeacherDashboard/>}
                 </main>
+            </div>
             </div>
         </div>
     );

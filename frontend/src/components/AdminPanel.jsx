@@ -4,7 +4,8 @@ import {
     ShieldCheck, Users, BookOpen, Terminal, Settings, Download,
     LogOut, RefreshCw, Search, Trash2, KeyRound, Plus, X, Check,
     ChevronLeft, ChevronRight, Eye, EyeOff, BarChart2, Database,
-    Zap, FileText, AlertTriangle, GraduationCap, UserPlus, Clock
+    Zap, FileText, AlertTriangle, GraduationCap, UserPlus, Clock,
+    Power, Megaphone, Activity, Globe, Edit3
 } from 'lucide-react';
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
@@ -739,18 +740,240 @@ const ExportTab = ({ users, logs, books }) => {
     );
 };
 
+// ── Site Control Tab ─────────────────────────────────────────────────────────
+const SiteControlTab = ({ showToast }) => {
+    const [maint, setMaint] = useState(false);
+    const [maintMsg, setMaintMsg] = useState("We'll be back soon! 🚀");
+    const [ann, setAnn] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/admin/maintenance').then(r=>r.json()).then(d=>{setMaint(d.enabled);setMaintMsg(d.message||'');}).catch(()=>{});
+        fetch('/api/admin/announcement').then(r=>r.json()).then(d=>setAnn(d.announcement||'')).catch(()=>{});
+    }, []);
+
+    const saveMaint = async () => {
+        setSaving(true);
+        const r = await fetch('/api/admin/maintenance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:maint,message:maintMsg})});
+        setSaving(false);
+        if(r.ok) showToast(`Maintenance mode ${maint?'ON':'OFF'}.`); else showToast('Save failed.',false);
+    };
+    const saveAnn = async () => {
+        if(!ann.trim()){const r=await fetch('/api/admin/announcement',{method:'DELETE'});if(r.ok)showToast('Announcement cleared.');return;}
+        const r=await fetch('/api/admin/announcement',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ann})});
+        if(r.ok)showToast('Announcement saved!');else showToast('Failed.',false);
+    };
+
+    const inp = {width:'100%',padding:'10px 14px',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',color:'#f1f5f9',fontSize:'0.88rem',outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
+    return (
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+            {/* Maintenance Mode */}
+            <div style={{padding:'24px',borderRadius:18,background:maint?'rgba(239,68,68,0.06)':'rgba(255,255,255,0.02)',border:`1px solid ${maint?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.06)'}`}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <Power size={18} color={maint?'#f87171':'#475569'}/>
+                        <span style={{fontWeight:800,fontSize:'1rem',color:maint?'#f87171':'#f1f5f9'}}>Maintenance Mode</span>
+                        {maint && <span style={{padding:'2px 10px',borderRadius:100,background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171',fontSize:'0.7rem',fontWeight:800}}>ACTIVE</span>}
+                    </div>
+                    <button onClick={()=>setMaint(m=>!m)} style={{width:52,height:28,borderRadius:100,background:maint?'#ef4444':'rgba(255,255,255,0.08)',border:'none',cursor:'pointer',position:'relative',transition:'background 0.2s'}}>
+                        <div style={{position:'absolute',top:4,left:maint?26:4,width:20,height:20,borderRadius:'50%',background:'white',transition:'left 0.2s'}}/>
+                    </button>
+                </div>
+                <p style={{color:'#64748b',fontSize:'0.84rem',marginBottom:14}}>When ON, all non-admin users see a maintenance page. They cannot access any features until you turn this off.</p>
+                <label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Maintenance Message</label>
+                <input value={maintMsg} onChange={e=>setMaintMsg(e.target.value)} style={{...inp,marginBottom:14}}/>
+                <button onClick={saveMaint} disabled={saving} className="btn-gradient" style={{padding:'10px 24px',borderRadius:10,fontSize:'0.88rem'}}>
+                    {saving?'Saving…':'Save Maintenance Settings'}
+                </button>
+            </div>
+
+            {/* Announcement Banner */}
+            <div style={{padding:'24px',borderRadius:18,background:'rgba(251,191,36,0.04)',border:'1px solid rgba(251,191,36,0.15)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                    <Megaphone size={18} color="#fbbf24"/>
+                    <span style={{fontWeight:800,fontSize:'1rem',color:'#f1f5f9'}}>Site-Wide Announcement</span>
+                </div>
+                <p style={{color:'#64748b',fontSize:'0.84rem',marginBottom:14}}>Shows a dismissible banner at the top of the dashboard for ALL users. Leave empty to clear it.</p>
+                <textarea value={ann} onChange={e=>setAnn(e.target.value)} rows={3} placeholder="e.g. 🎉 New features just dropped! Check out the Quiz section." style={{...inp,resize:'vertical',marginBottom:14}}/>
+                <div style={{display:'flex',gap:10}}>
+                    <button onClick={saveAnn} className="btn-gradient" style={{padding:'10px 20px',borderRadius:10,fontSize:'0.88rem'}}>Save Announcement</button>
+                    <button onClick={()=>{setAnn('');fetch('/api/admin/announcement',{method:'DELETE'}).then(()=>showToast('Cleared.'));}} style={{padding:'10px 18px',borderRadius:10,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.08)',color:'#f87171',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>Clear</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ── Create User Tab ───────────────────────────────────────────────────────────
+const CreateUserTab = ({ showToast, onRefresh }) => {
+    const [form, setForm] = useState({username:'',password:'',role:'Student',grade_level:'',teaching_grades:[]});
+    const [show, setShow] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState('');
+    const [success, setSuccess] = useState('');
+    const GRADES = [8,9,10,11,12];
+
+    const inp = {width:'100%',padding:'10px 14px',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',color:'#f1f5f9',fontSize:'0.88rem',outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
+    const upd = (k,v) => { setForm(p=>({...p,[k]:v})); setErr(''); setSuccess(''); };
+
+    const toggleGrade = (g) => {
+        setForm(p=>({...p,teaching_grades:p.teaching_grades.includes(g)?p.teaching_grades.filter(x=>x!==g):[...p.teaching_grades,g]}));
+    };
+
+    const submit = async () => {
+        if(!form.username.trim()||form.password.length<6){setErr('Username required, password 6+ chars.');return;}
+        setLoading(true);setErr('');
+        try{
+            const res=await fetch('/api/admin/users/create_any',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,grade_level:form.grade_level||null})});
+            const d=await res.json();
+            if(res.ok){setSuccess(d.message);showToast(d.message);setForm({username:'',password:'',role:'Student',grade_level:'',teaching_grades:[]});onRefresh();}
+            else setErr(d.error||'Failed.');
+        }catch{setErr('Network error.');}
+        finally{setLoading(false);}
+    };
+
+    return (
+        <div style={{maxWidth:580}}>
+            <div style={{padding:'28px 32px',borderRadius:20,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                <h3 style={{fontWeight:800,fontSize:'1.05rem',marginBottom:20,display:'flex',alignItems:'center',gap:9}}><UserPlus size={18} color="#818cf8"/> Create New User</h3>
+                {err && <div style={{marginBottom:14,padding:'10px 14px',borderRadius:10,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',color:'#f87171',fontSize:'0.84rem'}}>{err}</div>}
+                {success && <div style={{marginBottom:14,padding:'10px 14px',borderRadius:10,background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.25)',color:'#4ade80',fontSize:'0.84rem'}}>{success}</div>}
+                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                    <div><label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Username</label><input value={form.username} onChange={e=>upd('username',e.target.value)} style={inp}/></div>
+                    <div><label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Password</label>
+                        <div style={{position:'relative'}}>
+                            <input type={show?'text':'password'} value={form.password} onChange={e=>upd('password',e.target.value)} style={{...inp,paddingRight:42}}/>
+                            <button onClick={()=>setShow(s=>!s)} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',color:'#64748b',cursor:'pointer',display:'flex'}}>{show?<EyeOff size={15}/>:<Eye size={15}/>}</button>
+                        </div>
+                    </div>
+                    <div><label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Role</label>
+                        <div style={{display:'flex',gap:8}}>
+                            {['Student','Teacher','Admin'].map(r=><button key={r} onClick={()=>upd('role',r)} style={{padding:'8px 20px',borderRadius:10,border:`1px solid ${form.role===r?'rgba(99,102,241,0.5)':'rgba(255,255,255,0.1)'}`,background:form.role===r?'rgba(99,102,241,0.12)':'transparent',color:form.role===r?'#a5b4fc':'#64748b',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>)}
+                        </div>
+                    </div>
+                    {form.role==='Student' && <div><label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Grade Level</label>
+                        <select value={form.grade_level} onChange={e=>upd('grade_level',e.target.value)} style={{...inp}}>
+                            <option value="" style={{background:'#0d1117'}}>No grade</option>
+                            {GRADES.map(g=><option key={g} value={g} style={{background:'#0d1117'}}>Grade {g}</option>)}
+                        </select>
+                    </div>}
+                    {form.role==='Teacher' && <div><label style={{fontSize:'0.72rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:6}}>Teaching Grades</label>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                            {GRADES.map(g=><button key={g} onClick={()=>toggleGrade(g)} style={{padding:'6px 14px',borderRadius:100,border:`1px solid ${form.teaching_grades.includes(g)?'rgba(99,102,241,0.5)':'rgba(255,255,255,0.1)'}`,background:form.teaching_grades.includes(g)?'rgba(99,102,241,0.12)':'transparent',color:form.teaching_grades.includes(g)?'#a5b4fc':'#64748b',fontWeight:700,fontSize:'0.8rem',cursor:'pointer',fontFamily:'inherit'}}>Grade {g}</button>)}
+                        </div>
+                    </div>}
+                    <button onClick={submit} disabled={loading} className="btn-gradient" style={{padding:'12px',fontSize:'0.92rem',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:4}}>
+                        {loading?<div className="spin" style={{width:16,height:16,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%'}}/>:<><UserPlus size={15}/>Create User</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ── Live Quizzes Tab ──────────────────────────────────────────────────────────
+const LiveQuizzesTab = ({ showToast }) => {
+    const [sessions, setSessions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const STATUS_C = {waiting:'#fbbf24',active:'#4ade80',reveal:'#818cf8',finished:'#64748b'};
+
+    const fetchSessions = async () => {
+        setLoading(true);
+        try{const r=await fetch('/api/admin/live_quizzes');if(r.ok)setSessions((await r.json()).sessions||[]);}catch{}
+        setLoading(false);
+    };
+    const deleteSession = async (code) => {
+        const r=await fetch(`/api/admin/live_quizzes/${code}`,{method:'DELETE'});
+        if(r.ok){showToast(`Session ${code} deleted.`);fetchSessions();}else showToast('Delete failed.',false);
+    };
+    useEffect(()=>{fetchSessions();},[]);
+
+    return (
+        <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                <p style={{color:'#64748b',fontSize:'0.84rem'}}>All live quiz sessions hosted by teachers.</p>
+                <button onClick={fetchSessions} style={actionBtn('rgba(99,102,241,0.3)','rgba(99,102,241,0.08)','#818cf8')}><RefreshCw size={11} className={loading?'spin':''}/> Refresh</button>
+            </div>
+            {loading?<p style={{color:'#475569',textAlign:'center',padding:40}}>Loading…</p>:
+            sessions.length===0?<p style={{color:'#334155',textAlign:'center',padding:40}}>No quiz sessions found.</p>:
+            <div style={{borderRadius:16,overflow:'hidden',border:'1px solid rgba(255,255,255,0.06)'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'0.84rem'}}>
+                    <thead><tr style={{background:'rgba(0,0,0,0.35)'}}>
+                        {['Code','Teacher','Status','Question','Created','Actions'].map((h,i)=><th key={h} style={theadTh(i===5)}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>{sessions.map((s,i)=>(
+                        <tr key={s.code} style={{borderTop:'1px solid rgba(255,255,255,0.04)',background:i%2===0?'transparent':'rgba(255,255,255,0.01)'}}>
+                            <td style={{padding:'11px 14px'}}><span style={{fontFamily:'monospace',fontWeight:800,color:'#a5b4fc',fontSize:'1rem',letterSpacing:'0.1em'}}>{s.code}</span></td>
+                            <td style={{padding:'11px 14px',color:'#94a3b8'}}>{s.teacher_name}</td>
+                            <td style={{padding:'11px 14px'}}><span style={{padding:'2px 10px',borderRadius:100,fontSize:'0.72rem',fontWeight:700,background:`${STATUS_C[s.status]||'#64748b'}15`,color:STATUS_C[s.status]||'#64748b',border:`1px solid ${STATUS_C[s.status]||'#64748b'}30`}}>{s.status}</span></td>
+                            <td style={{padding:'11px 14px',color:'#64748b',fontSize:'0.8rem'}}>Q{(s.current_q||0)+1}</td>
+                            <td style={{padding:'11px 14px',color:'#475569',fontSize:'0.76rem',fontFamily:'monospace'}}>{s.created_at?new Date(s.created_at).toLocaleString():'—'}</td>
+                            <td style={{padding:'11px 14px',textAlign:'right'}}><button onClick={()=>deleteSession(s.code)} style={actionBtn('rgba(239,68,68,0.3)','rgba(239,68,68,0.08)','#f87171')}><Trash2 size={11}/> Delete</button></td>
+                        </tr>
+                    ))}</tbody>
+                </table>
+            </div>}
+        </div>
+    );
+};
+
+// ── System Health Tab ─────────────────────────────────────────────────────────
+const SystemHealthTab = ({ showToast }) => {
+    const [health, setHealth] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const now = useClock();
+
+    const check = async () => {
+        setLoading(true);
+        try{const r=await fetch('/api/admin/system_health');if(r.ok)setHealth(await r.json());else showToast('Health check failed.',false);}
+        catch{showToast('Network error.',false);}
+        setLoading(false);
+    };
+    useEffect(()=>{check();},[]);
+
+    const Row = ({label,val,ok}) => (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderRadius:12,background:'rgba(255,255,255,0.02)',border:`1px solid ${ok===false?'rgba(239,68,68,0.2)':ok?'rgba(74,222,128,0.15)':'rgba(255,255,255,0.05)'}`}}>
+            <span style={{color:'#94a3b8',fontSize:'0.85rem'}}>{label}</span>
+            <span style={{fontWeight:700,fontSize:'0.88rem',color:ok===false?'#f87171':ok?'#4ade80':'#f1f5f9',fontFamily:'monospace'}}>{String(val)}</span>
+        </div>
+    );
+
+    return (
+        <div style={{display:'flex',flexDirection:'column',gap:20,maxWidth:680}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <p style={{color:'#64748b',fontSize:'0.84rem'}}>Real-time platform health check. Last checked: {now.toLocaleTimeString()}</p>
+                <button onClick={check} disabled={loading} style={actionBtn('rgba(99,102,241,0.3)','rgba(99,102,241,0.08)','#818cf8')}><RefreshCw size={11} className={loading?'spin':''}/> Recheck</button>
+            </div>
+            {health && (
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    <Row label="Supabase Connected" val={health.supabase_ok?'✓ Connected':'✗ Disconnected'} ok={health.supabase_ok}/>
+                    <Row label="Groq API Keys Loaded" val={`${health.groq_keys} key(s)`} ok={health.groq_keys>0}/>
+                    <Row label="Python Version" val={health.python} ok={null}/>
+                    <Row label="Platform" val={health.platform} ok={null}/>
+                    <Row label="Server Status" val="Online" ok={true}/>
+                    <Row label="Admin Session" val="Active — Full Control" ok={true}/>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ────────────────────────────────────────────────────────────────────────────────
 // MAIN AdminPanel
 // ────────────────────────────────────────────────────────────────────────────────
 const TABS = [
-    { id:'overview',  label:'Overview',      icon:BarChart2  },
-    { id:'users',     label:'Users',         icon:Users      },
-    { id:'library',   label:'Library',       icon:BookOpen   },
-    { id:'database',  label:'Database',      icon:Database   },
-    { id:'aimodels',  label:'AI & Models',   icon:Zap        },
-    { id:'logs',      label:'Activity Logs', icon:Terminal   },
-    { id:'tools',     label:'Admin Tools',   icon:Settings   },
-    { id:'export',    label:'Export',        icon:Download   },
+    { id:'overview',   label:'Overview',       icon:BarChart2  },
+    { id:'users',      label:'Users',          icon:Users      },
+    { id:'createuser', label:'Create User',    icon:UserPlus   },
+    { id:'library',    label:'Library',        icon:BookOpen   },
+    { id:'database',   label:'Database',       icon:Database   },
+    { id:'sitecontrol',label:'Site Control',   icon:Power      },
+    { id:'livequizzes',label:'Live Quizzes',   icon:Activity   },
+    { id:'aimodels',   label:'AI & Models',    icon:Zap        },
+    { id:'logs',       label:'Activity Logs',  icon:Terminal   },
+    { id:'tools',      label:'Admin Tools',    icon:Settings   },
+    { id:'health',     label:'System Health',  icon:Globe      },
+    { id:'export',     label:'Export',         icon:Download   },
 ];
 
 const AdminPanel = () => {
@@ -789,7 +1012,7 @@ const AdminPanel = () => {
         </button>
     );
 
-    const tabTitles = { overview:'Overview', users:'User Management', library:'Library Control', database:'Database Inspector', aimodels:'AI & Models', logs:'Activity Logs', tools:'Admin Tools', export:'Export & Reports' };
+    const tabTitles = { overview:'Overview', users:'User Management', createuser:'Create User', library:'Library Control', database:'Database Inspector', sitecontrol:'Site Control', livequizzes:'Live Quiz Sessions', aimodels:'AI & Models', logs:'Activity Logs', tools:'Admin Tools', health:'System Health', export:'Export & Reports' };
 
     const handleViewAs = async (u) => {
         const r = await fetch(`/api/admin/impersonate/${u.id}`,{method:'POST'});
@@ -857,14 +1080,18 @@ const AdminPanel = () => {
                         </div>
                     ) : (
                                         <div className="animate-fade-up">
-                            {tab==='overview'  && <OverviewTab stats={stats} logs={logs}/>}
-                            {tab==='users'     && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast} onViewAs={handleViewAs}/>}
-                            {tab==='library'   && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
-                            {tab==='database'  && <DatabaseTab showToast={showToast}/>}
-                            {tab==='aimodels'  && <AIModelsTab showToast={showToast}/>}
-                            {tab==='logs'      && <LogsTab logs={logs}/>}
-                            {tab==='tools'     && <AdminToolsTab currentUser={user} showToast={showToast}/>}
-                            {tab==='export'    && <ExportTab users={users} logs={logs} books={books}/>}
+                            {tab==='overview'    && <OverviewTab stats={stats} logs={logs}/>}
+                            {tab==='users'       && <UsersTab users={users} onRefresh={fetchAll} showToast={showToast} onViewAs={handleViewAs}/>}
+                            {tab==='createuser'  && <CreateUserTab showToast={showToast} onRefresh={fetchAll}/>}
+                            {tab==='library'     && <LibraryTab books={books} setBooks={setBooks} showToast={showToast}/>}
+                            {tab==='database'    && <DatabaseTab showToast={showToast}/>}
+                            {tab==='sitecontrol' && <SiteControlTab showToast={showToast}/>}
+                            {tab==='livequizzes' && <LiveQuizzesTab showToast={showToast}/>}
+                            {tab==='aimodels'    && <AIModelsTab showToast={showToast}/>}
+                            {tab==='logs'        && <LogsTab logs={logs} showToast={showToast} onRefresh={fetchAll}/>}
+                            {tab==='tools'       && <AdminToolsTab currentUser={user} showToast={showToast}/>}
+                            {tab==='health'      && <SystemHealthTab showToast={showToast}/>}
+                            {tab==='export'      && <ExportTab users={users} logs={logs} books={books}/>}
                         </div>
                     )}
                 </div>
