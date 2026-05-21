@@ -7,6 +7,20 @@ const getStats = () => {
     try { return JSON.parse(localStorage.getItem(STATS_KEY) || '{}'); } catch { return {}; }
 };
 
+// Silently push stats to Supabase so teachers can see them.
+// Uses a debounce so rapid events don't hammer the server.
+let _syncTimer = null;
+const syncToServer = (stats) => {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(() => {
+        fetch('/api/stats/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stats }),
+        }).catch(() => {}); // fire-and-forget, never block the UI
+    }, 1500); // wait 1.5s after last event
+};
+
 export const trackEvent = (event, payload = {}) => {
     const stats = getStats();
     const today = new Date().toISOString().split('T')[0];
@@ -36,6 +50,7 @@ export const trackEvent = (event, payload = {}) => {
     stats.last_active_date = today;
 
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    syncToServer(stats); // background sync for teachers
 };
 
 const StatCard = ({ icon, label, value, sub, color = '#818cf8' }) => (

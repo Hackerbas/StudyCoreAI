@@ -380,12 +380,16 @@ def register():
     grade_level = data.get('grade_level')
     dob = data.get('dob')
     teacher_password = data.get('teacher_password')
+    teaching_grades = data.get('teaching_grades', [])  # list of ints for teachers
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
 
     if role == 'Teacher' and teacher_password != 'u5a0qMj9xLPYwWJbG91G':
         return jsonify({'error': 'Invalid Teacher Access Code'}), 403
+
+    if role == 'Teacher' and not teaching_grades:
+        return jsonify({'error': 'Please select at least one grade you teach.'}), 400
 
     if role == 'Student' and not grade_level:
          return jsonify({'error': 'Grade level required for students'}), 400
@@ -407,13 +411,18 @@ def register():
         if len(existing.data) > 0:
             return jsonify({'error': 'Username already exists'}), 409
 
-        supabase.table('users').insert({
+        insert_payload = {
             'username': username,
             'password': hashed_password,
             'role': role,
             'grade_level': grade_level,
-            'dob': dob
-        }).execute()
+            'dob': dob,
+        }
+        if role == 'Teacher' and teaching_grades:
+            # Ensure they are all ints
+            insert_payload['teaching_grades'] = [int(g) for g in teaching_grades]
+
+        supabase.table('users').insert(insert_payload).execute()
         log_action('Registered', f'New {role} account created: {username}')
         return jsonify({'message': 'User registered successfully'}), 201
     except Exception as e:
@@ -439,8 +448,15 @@ def login():
             session['role'] = user['role']
             session['username'] = user['username']
             session['grade_level'] = user['grade_level']
+            session['teaching_grades'] = user.get('teaching_grades') or []
             log_action('Logged In', 'Successful login')
-            return jsonify({'message': 'Login successful', 'role': user['role'], 'username': user['username']}), 200
+            return jsonify({
+                'message': 'Login successful',
+                'role': user['role'],
+                'username': user['username'],
+                'grade_level': user.get('grade_level'),
+                'teaching_grades': user.get('teaching_grades') or [],
+            }), 200
         else:
             log_action('Failed Login', f'Failed attempt for username: {username}')
             return jsonify({'error': 'Invalid credentials'}), 401
@@ -470,9 +486,57 @@ def check_auth():
             'authenticated': True,
             'role': session['role'],
             'username': session['username'],
-            'grade_level': session.get('grade_level')
+            'grade_level': session.get('grade_level'),
+            'teaching_grades': session.get('teaching_grades') or [],
         }), 200
     return jsonify({'authenticated': False}), 401
+
+
+@app.route('/api/stats/sync', methods=['POST'])
+def sync_stats():
+    """Students call this to persist their localStorage stats to the DB."""
+    if 'user_id' not in session or session.get('user_id') == 'guest':
+        return jsonify({'ok': False}), 403
+    if session.get('role') != 'Student':
+        return jsonify({'ok': False, 'reason': 'not a student'}), 200  # silent ignore for teachers
+    data = request.json or {}
+    stats_payload = data.get('stats', {})
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        supabase.table('users').update({'stats': stats_payload}).eq('id', session['user_id']).execute()
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        print(f"[sync_stats] {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/teacher/student_stats', methods=['GET'])
+def teacher_student_stats():
+    """Return all students in the teacher's taught grades with their stats."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        # Fetch the teacher's teaching_grades from DB (session may be stale)
+        teacher_row = supabase.table('users').select('teaching_grades').eq('id', session['user_id']).execute()
+        teaching_grades = []
+        if teacher_row.data:
+            teaching_grades = teacher_row.data[0].get('teaching_grades') or []
+        # For Admin, show all students
+        if session.get('role') == 'Admin':
+            query = supabase.table('users').select('id, username, grade_level, stats').eq('role', 'Student')
+        elif teaching_grades:
+            query = supabase.table('users').select('id, username, grade_level, stats').eq('role', 'Student').in_('grade_level', teaching_grades)
+        else:
+            return jsonify({'students': [], 'teaching_grades': []}), 200
+        result = query.order('grade_level').execute()
+        students = result.data or []
+        return jsonify({'students': students, 'teaching_grades': teaching_grades}), 200
+    except Exception as e:
+        print(f"[teacher_student_stats] {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -1717,6 +1781,430 @@ def admin_book_chunk_count(book_id):
         return jsonify({'chunks': c, 'knowledge': k}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ─── Teacher Curriculum Planner ──────────────────────────────────────────────
+
+@app.route('/api/teacher/curriculum_plan', methods=['POST'])
+def teacher_curriculum_plan():
+    """Generate a structured teaching curriculum for the specified duration."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+
+    data     = request.json or {}
+    duration = data.get('duration', 'week')   # week | month | year
+    subject  = data.get('subject', 'All')
+    grades   = data.get('grades', [])          # list of ints from teaching_grades
+
+    grade_str = ', '.join(f'Grade {g}' for g in sorted(grades)) if grades else 'all grades'
+
+    DURATION_PROMPTS = {
+        'week': f"""Create a detailed 5-day (Monday to Friday) teaching curriculum plan.
+Subject focus: {subject if subject != 'All' else 'General/Mixed'}.
+Target grades: {grade_str}.
+Return ONLY valid JSON:
+{{
+  "duration": "week",
+  "periods": [
+    {{
+      "label": "Monday",
+      "topic": "Lesson topic title",
+      "objective": "Learning objective (what students will be able to do)",
+      "activity": "Classroom activity description",
+      "assessment": "How you'll assess understanding (e.g. exit ticket, quiz, discussion)",
+      "materials": ["Resource 1", "Resource 2"]
+    }}
+  ]
+}}
+Generate 5 periods (Monday–Friday).""",
+
+        'month': f"""Create a detailed 4-week monthly teaching curriculum plan.
+Subject focus: {subject if subject != 'All' else 'General/Mixed'}.
+Target grades: {grade_str}.
+Return ONLY valid JSON:
+{{
+  "duration": "month",
+  "periods": [
+    {{
+      "label": "Week 1",
+      "topic": "Unit/topic title",
+      "objective": "Weekly learning objectives",
+      "activity": "Main teaching activities for the week",
+      "assessment": "Assessment method for this week",
+      "materials": ["Resource 1", "Resource 2"]
+    }}
+  ]
+}}
+Generate 4 periods (Week 1–4).""",
+
+        'year': f"""Create a comprehensive full school-year teaching curriculum (September to June).
+Subject focus: {subject if subject != 'All' else 'General/Mixed'}.
+Target grades: {grade_str}.
+Return ONLY valid JSON:
+{{
+  "duration": "year",
+  "periods": [
+    {{
+      "label": "September",
+      "topic": "Unit/module title",
+      "objective": "Monthly learning goals",
+      "activity": "Key teaching activities and projects",
+      "assessment": "Assessment and evaluation methods",
+      "materials": ["Textbook chapter", "Worksheet"]
+    }}
+  ]
+}}
+Generate 10 periods (September–June).""",
+    }
+
+    prompt = DURATION_PROMPTS.get(duration, DURATION_PROMPTS['week'])
+
+    try:
+        chat_completion = groq_chat_with_rotation(
+            temperature=0.5,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are an expert curriculum planner for a school. Generate detailed, realistic, educationally sound teaching plans. Return ONLY valid JSON."},
+                {"role": "user",   "content": prompt},
+            ]
+        )
+        result = json.loads(chat_completion.choices[0].message.content)
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"[curriculum_plan] {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Live Quiz System ─────────────────────────────────────────────────────────
+
+import random as _random_lq
+import string as _string_lq
+
+def _gen_quiz_code():
+    return ''.join(_random_lq.choices(_string_lq.ascii_uppercase + _string_lq.digits, k=6))
+
+@app.route('/api/live_quiz/create', methods=['POST'])
+def live_quiz_create():
+    """Teacher: AI-generates questions and creates a hosted quiz session."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+
+    data          = request.json or {}
+    subject       = data.get('subject', 'All')
+    difficulty    = data.get('difficulty', 'medium')
+    num_questions = min(max(int(data.get('num_questions', 10)), 3), 20)
+
+    # Fetch library context
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        books_res = supabase.table('books').select('filename, content, subject').execute()
+        all_books = books_res.data or []
+        if subject != 'All':
+            all_books = [b for b in all_books if b.get('subject') == subject]
+    except Exception as e:
+        return jsonify({'error': f'Failed to load library: {e}'}), 500
+
+    context = ""
+    for b in all_books:
+        context += f"--- {b['filename']} ---\n{(b.get('content') or '')[:8000]}\n\n"
+        if len(context) > 40000:
+            break
+
+    if not context.strip():
+        context = "Generate general knowledge quiz questions appropriate for school students."
+
+    try:
+        chat = groq_chat_with_rotation(
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": f"""You are a quiz generator. Generate exactly {num_questions} multiple-choice questions at {difficulty} difficulty.
+Return ONLY valid JSON:
+{{"questions": [{{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A", "explanation": "..."}}]}}
+Rules: answers must be A, B, C, or D. Always include explanation."""},
+                {"role": "user", "content": f"Generate {num_questions} {difficulty} questions from:\n\n{context[:30000]}"}
+            ]
+        )
+        quiz_data = json.loads(chat.choices[0].message.content)
+        questions = quiz_data.get('questions', [])
+        if not questions:
+            return jsonify({'error': 'AI returned no questions.'}), 500
+    except Exception as e:
+        return jsonify({'error': f'AI generation failed: {e}'}), 500
+
+    # Generate unique code
+    code = _gen_quiz_code()
+    for _ in range(10):
+        existing = supabase.table('live_quiz_sessions').select('code').eq('code', code).execute()
+        if not existing.data:
+            break
+        code = _gen_quiz_code()
+
+    try:
+        supabase.table('live_quiz_sessions').insert({
+            'code':         code,
+            'teacher_id':   session['user_id'],
+            'teacher_name': session['username'],
+            'questions':    questions,
+            'status':       'waiting',
+            'current_q':    0,
+        }).execute()
+    except Exception as e:
+        return jsonify({'error': f'Failed to create session: {e}'}), 500
+
+    log_action('Live Quiz Created', f'Code: {code}, {len(questions)} questions')
+    return jsonify({'code': code, 'num_questions': len(questions)}), 201
+
+
+@app.route('/api/live_quiz/<string:code>/state', methods=['GET'])
+def live_quiz_state(code):
+    """Poll endpoint for both teacher and students: returns current quiz state."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        sess_res = supabase.table('live_quiz_sessions').select('*').eq('code', code.upper()).execute()
+        if not sess_res.data:
+            return jsonify({'error': 'Session not found'}), 404
+        sess = sess_res.data[0]
+
+        participants_res = supabase.table('live_quiz_participants').select('user_id, username, score').eq('code', code.upper()).order('score', desc=True).execute()
+        participants = participants_res.data or []
+
+        # Current question index
+        current_q = sess.get('current_q', 0)
+        questions  = sess.get('questions', [])
+        total_q    = len(questions)
+
+        # Build question for client — strip answer unless quiz finished
+        q_for_client = None
+        if questions and current_q < total_q:
+            q = questions[current_q]
+            q_for_client = {
+                'question': q['question'],
+                'options':  q['options'],
+                'index':    current_q,
+                'total':    total_q,
+            }
+            # Reveal answer only after status == 'reveal' or if teacher
+            if sess.get('status') == 'reveal' or session.get('role') in ('Teacher', 'Admin'):
+                q_for_client['answer']      = q.get('answer')
+                q_for_client['explanation'] = q.get('explanation')
+
+        # Count answers for current question
+        ans_count = 0
+        user_answer = None
+        user_locked_until = None
+        if sess.get('status') in ('active', 'reveal'):
+            ans_res = supabase.table('live_quiz_answers').select('user_id, answer, is_correct, locked_until').eq('code', code.upper()).eq('question_idx', current_q).execute()
+            ans_count = len(ans_res.data or [])
+            # Find this user's answer
+            my_uid = str(session['user_id'])
+            for a in (ans_res.data or []):
+                if str(a['user_id']) == my_uid:
+                    user_answer     = a['answer']
+                    user_locked_until = a.get('locked_until')
+                    break
+
+        return jsonify({
+            'status':           sess.get('status'),
+            'current_q':        current_q,
+            'total_q':          total_q,
+            'question':         q_for_client,
+            'participants':     participants,
+            'answer_count':     ans_count,
+            'question_started_at': sess.get('question_started_at'),
+            'user_answer':      user_answer,
+            'user_locked_until': user_locked_until,
+        }), 200
+    except Exception as e:
+        print(f"[live_quiz_state] {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/live_quiz/<string:code>/join', methods=['POST'])
+def live_quiz_join(code):
+    """Student joins a live quiz session."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        sess_res = supabase.table('live_quiz_sessions').select('status').eq('code', code.upper()).execute()
+        if not sess_res.data:
+            return jsonify({'error': 'Invalid room code'}), 404
+        if sess_res.data[0]['status'] == 'finished':
+            return jsonify({'error': 'This quiz has already ended'}), 400
+
+        # Upsert participant
+        existing = supabase.table('live_quiz_participants').select('id').eq('code', code.upper()).eq('user_id', session['user_id']).execute()
+        if not existing.data:
+            supabase.table('live_quiz_participants').insert({
+                'code':     code.upper(),
+                'user_id':  session['user_id'],
+                'username': session['username'],
+                'score':    0,
+            }).execute()
+        return jsonify({'ok': True, 'code': code.upper()}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/live_quiz/<string:code>/start', methods=['POST'])
+def live_quiz_start(code):
+    """Teacher starts the quiz."""
+    if 'user_id' not in session or session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        supabase.table('live_quiz_sessions').update({
+            'status': 'active',
+            'current_q': 0,
+            'question_started_at': now,
+        }).eq('code', code.upper()).execute()
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/live_quiz/<string:code>/answer', methods=['POST'])
+def live_quiz_answer(code):
+    """Student submits answer for current question."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data   = request.json or {}
+    answer = data.get('answer', '').upper()  # A/B/C/D
+    if answer not in ('A', 'B', 'C', 'D'):
+        return jsonify({'error': 'Invalid answer'}), 400
+
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        from datetime import datetime, timezone, timedelta
+
+        sess_res = supabase.table('live_quiz_sessions').select('status, current_q, questions').eq('code', code.upper()).execute()
+        if not sess_res.data:
+            return jsonify({'error': 'Session not found'}), 404
+        sess = sess_res.data[0]
+        if sess['status'] != 'active':
+            return jsonify({'error': 'Question not open'}), 400
+
+        current_q = sess['current_q']
+        questions = sess['questions']
+        correct_answer = questions[current_q]['answer'].upper()
+        is_correct = (answer == correct_answer)
+
+        # Check if already answered this question
+        existing = supabase.table('live_quiz_answers').select('id, is_correct, locked_until').eq('code', code.upper()).eq('question_idx', current_q).eq('user_id', session['user_id']).execute()
+
+        now = datetime.now(timezone.utc)
+
+        if existing.data:
+            # Check lockout
+            a = existing.data[0]
+            if a.get('locked_until'):
+                try:
+                    lock_time = datetime.fromisoformat(a['locked_until'].replace('Z', '+00:00'))
+                    if now < lock_time:
+                        remaining = (lock_time - now).total_seconds()
+                        return jsonify({'locked': True, 'remaining': round(remaining, 1), 'is_correct': a['is_correct']}), 200
+                except Exception:
+                    pass
+            if a['is_correct']:
+                return jsonify({'already_correct': True, 'is_correct': True}), 200
+            # Allow retry after lockout expires — update the answer
+            locked_until = None if is_correct else (now + timedelta(seconds=3)).isoformat()
+            supabase.table('live_quiz_answers').update({
+                'answer': answer,
+                'is_correct': is_correct,
+                'answered_at': now.isoformat(),
+                'locked_until': locked_until,
+            }).eq('id', a['id']).execute()
+        else:
+            locked_until = None if is_correct else (now + timedelta(seconds=3)).isoformat()
+            supabase.table('live_quiz_answers').insert({
+                'code':         code.upper(),
+                'question_idx': current_q,
+                'user_id':      session['user_id'],
+                'username':     session['username'],
+                'answer':       answer,
+                'is_correct':   is_correct,
+                'answered_at':  now.isoformat(),
+                'locked_until': locked_until,
+            }).execute()
+
+        if is_correct:
+            # Add points to participant
+            part_res = supabase.table('live_quiz_participants').select('score').eq('code', code.upper()).eq('user_id', session['user_id']).execute()
+            current_score = part_res.data[0]['score'] if part_res.data else 0
+            supabase.table('live_quiz_participants').update({'score': current_score + 100}).eq('code', code.upper()).eq('user_id', session['user_id']).execute()
+
+        return jsonify({
+            'is_correct':    is_correct,
+            'correct_answer': correct_answer if not is_correct else None,
+            'locked_until':  locked_until,
+        }), 200
+    except Exception as e:
+        print(f"[live_quiz_answer] {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/live_quiz/<string:code>/next', methods=['POST'])
+def live_quiz_next(code):
+    """Teacher advances to next question (or reveal phase)."""
+    if 'user_id' not in session or session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        from datetime import datetime, timezone
+
+        sess_res = supabase.table('live_quiz_sessions').select('current_q, questions, status').eq('code', code.upper()).execute()
+        if not sess_res.data:
+            return jsonify({'error': 'Session not found'}), 404
+        sess      = sess_res.data[0]
+        current_q = sess['current_q']
+        total_q   = len(sess['questions'])
+
+        data = request.json or {}
+        action = data.get('action', 'reveal')  # 'reveal' or 'next'
+
+        now = datetime.now(timezone.utc).isoformat()
+        if action == 'reveal':
+            supabase.table('live_quiz_sessions').update({'status': 'reveal'}).eq('code', code.upper()).execute()
+            return jsonify({'ok': True, 'status': 'reveal'}), 200
+        else:
+            next_q = current_q + 1
+            if next_q >= total_q:
+                supabase.table('live_quiz_sessions').update({'status': 'finished'}).eq('code', code.upper()).execute()
+                return jsonify({'ok': True, 'status': 'finished'}), 200
+            else:
+                supabase.table('live_quiz_sessions').update({
+                    'status': 'active',
+                    'current_q': next_q,
+                    'question_started_at': now,
+                }).eq('code', code.upper()).execute()
+                return jsonify({'ok': True, 'status': 'active', 'current_q': next_q}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/live_quiz/<string:code>/end', methods=['POST'])
+def live_quiz_end(code):
+    """Teacher ends the quiz early."""
+    if 'user_id' not in session or session.get('role') not in ('Teacher', 'Admin'):
+        return jsonify({'error': 'Teacher access required'}), 403
+    try:
+        if not supabase: raise Exception("Supabase not initialized")
+        supabase.table('live_quiz_sessions').update({'status': 'finished'}).eq('code', code.upper()).execute()
+        log_action('Live Quiz Ended', f'Code: {code}')
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/')
 

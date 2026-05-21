@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import TeacherDashboard from './TeacherDashboard';
+import TeacherStatsView from './TeacherStatsView';
+import TeacherQuizView from './TeacherQuizView';
+import TeacherPlanView from './TeacherPlanView';
 import StudentDashboard from './StudentDashboard';
 import BookLibrary from './BookLibrary';
 import QuizView from './QuizView';
@@ -8,7 +11,7 @@ import StatsView from './StatsView';
 import StudyPlanView from './StudyPlanView';
 import ChangelogPopup from './ChangelogPopup';
 import AdminPanel from './AdminPanel';
-import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar, Plus, Trash2, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LogOut, BookOpen, MessageSquare, Upload, Brain, BarChart2, User, Calendar, Plus, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -80,19 +83,6 @@ const Dashboard = () => {
         }));
     };
     
-    const deleteChat = (e, id) => {
-        e.stopPropagation();
-        setChats(prev => {
-            const filtered = prev.filter(c => c.id !== id);
-            if (filtered.length === 0) {
-                 const nc = { id: Date.now().toString(), title: 'New Chat', messages: [], updatedAt: Date.now() };
-                 setActiveChatId(nc.id);
-                 return [nc];
-            }
-            if (activeChatId === id) setActiveChatId(filtered[0].id);
-            return filtered;
-        });
-    };
 
     const handleLogout = async () => { await logout(); navigate('/login'); };
 
@@ -213,10 +203,6 @@ const Dashboard = () => {
                                             <MessageSquare size={14} color={isActive?'#f8fafc':'var(--text-muted)'}/>
                                             <span style={{ fontSize:'0.85rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontWeight:isActive?500:400 }}>{c.title}</span>
                                         </div>
-                                        <button onClick={e => deleteChat(e, c.id)} title={t('delete_chat')} style={{ background:'transparent', border:'none', color:'var(--text-muted)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:4, borderRadius:4 }}
-                                        onMouseEnter={e => { e.currentTarget.style.color='#ef4444'; e.currentTarget.style.background='rgba(239,68,68,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color='var(--text-muted)'; e.currentTarget.style.background='transparent'; }}>
-                                            <Trash2 size={14}/>
-                                        </button>
                                     </div>
                                 );
                             })}
@@ -285,9 +271,9 @@ const Dashboard = () => {
                 <main style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                     {view==='chat'   && <StudentDashboard chatMessages={activeChat.messages} setChatMessages={updateMessages} createNewChat={createNewChat}/>}
                     {view==='bookAI' && <BookLibrary user={user}/>}
-                    {view==='quiz'   && <QuizView user={user}/>}
-                    {view==='plan'   && <StudyPlanView/>}
-                    {view==='stats'  && <StatsView/>}
+                    {view==='quiz'   && (isTeacher ? <TeacherQuizView user={user}/> : <QuizView user={user}/>)}
+                    {view==='plan'   && (isTeacher ? <TeacherPlanView user={user}/> : <StudyPlanView/>)}
+                    {view==='stats'  && (isTeacher ? <TeacherStatsView /> : <StatsView/>)}
                     {view==='manage' && isTeacher && <TeacherDashboard/>}
                 </main>
             </div>

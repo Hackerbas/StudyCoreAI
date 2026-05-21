@@ -631,6 +631,164 @@ const SavedTab = ({ onLoadQuiz, onLoadFlashcard, showToast }) => {
     );
 };
 
+// ─── Join Live Quiz Tab (student) ───────────────────────────────────────────
+const JoinLiveTab = () => {
+    const [code,    setCode]    = useState('');
+    const [joined,  setJoined]  = useState(false);
+    const [state,   setState]   = useState(null);
+    const [err,     setErr]     = useState('');
+    const [loading, setLoading] = useState(false);
+    const [answer,  setAnswer]  = useState(null);   // A/B/C/D chosen
+    const [lockSec, setLockSec] = useState(0);       // countdown
+    const pollRef = React.useRef(null);
+
+    // Countdown timer for lockout
+    React.useEffect(() => {
+        if (lockSec <= 0) return;
+        const t = setTimeout(() => setLockSec(s => Math.max(0, s - 1)), 1000);
+        return () => clearTimeout(t);
+    }, [lockSec]);
+
+    const startPolling = (c) => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        const poll = async () => {
+            try {
+                const res = await fetch(`/api/live_quiz/${c}/state`);
+                const d   = await res.json();
+                if (res.ok) {
+                    setState(d);
+                    // Restore answer + lockout from server
+                    if (d.user_answer) setAnswer(d.user_answer);
+                    if (d.user_locked_until) {
+                        const rem = (new Date(d.user_locked_until) - new Date()) / 1000;
+                        if (rem > 0) setLockSec(Math.ceil(rem));
+                    }
+                    if (d.status === 'finished') clearInterval(pollRef.current);
+                }
+            } catch {}
+        };
+        poll();
+        pollRef.current = setInterval(poll, 2000);
+    };
+
+    React.useEffect(() => () => clearInterval(pollRef.current), []);
+
+    const join = async () => {
+        if (code.length < 4) return;
+        setLoading(true); setErr('');
+        try {
+            const res = await fetch(`/api/live_quiz/${code.toUpperCase()}/join`, { method:'POST' });
+            const d   = await res.json();
+            if (res.ok) { setJoined(true); startPolling(code.toUpperCase()); }
+            else setErr(d.error || 'Could not join');
+        } catch { setErr('Network error'); }
+        finally { setLoading(false); }
+    };
+
+    const submitAnswer = async (letter) => {
+        if (lockSec > 0 || answer === letter) return;
+        setAnswer(letter);
+        try {
+            const res = await fetch(`/api/live_quiz/${code.toUpperCase()}/answer`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ answer: letter }) });
+            const d   = await res.json();
+            if (d.locked_until) {
+                const rem = (new Date(d.locked_until) - new Date()) / 1000;
+                if (rem > 0) { setLockSec(Math.ceil(rem)); if (!d.is_correct) setAnswer(null); }
+            }
+        } catch {}
+    };
+
+    if (!joined) return (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, padding:40 }}>
+            <div className="glass" style={{ width:'100%', maxWidth:400, padding:'36px 32px', borderRadius:20, textAlign:'center' }}>
+                <p style={{ fontSize:'2.5rem', marginBottom:12 }}>🎮</p>
+                <h2 style={{ fontWeight:800, fontSize:'1.3rem', marginBottom:8 }}>Join Live Quiz</h2>
+                <p style={{ color:'var(--text-muted)', fontSize:'0.86rem', marginBottom:24 }}>Enter the 6-character room code from your teacher.</p>
+                {err && <div style={{ marginBottom:14, padding:'10px 14px', borderRadius:10, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', color:'#f87171', fontSize:'0.84rem' }}>{err}</div>}
+                <input value={code} onChange={e=>setCode(e.target.value.toUpperCase().slice(0,6))} onKeyDown={e=>e.key==='Enter'&&join()} placeholder="ABC123" maxLength={6} style={{ width:'100%', padding:'14px', borderRadius:12, background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', color:'var(--text-primary)', fontSize:'1.5rem', fontWeight:800, fontFamily:'monospace', letterSpacing:'0.2em', textAlign:'center', outline:'none', boxSizing:'border-box', marginBottom:14 }}/>
+                <button onClick={join} disabled={loading||code.length<4} className="btn-gradient" style={{ width:'100%', padding:'13px', fontSize:'0.92rem', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                    {loading ? <div className="spin" style={{ width:16,height:16,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%' }}/> : '🎮 Join Game'}
+                </button>
+            </div>
+        </div>
+    );
+
+    const status = state?.status;
+    const q      = state?.question;
+    const pts    = state?.participants || [];
+
+    if (status === 'waiting') return (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, padding:40 }}>
+            <div className="glass" style={{ maxWidth:420, width:'100%', padding:'40px 32px', borderRadius:20, textAlign:'center' }}>
+                <div style={{ width:14, height:14, borderRadius:'50%', background:'#4ade80', boxShadow:'0 0 12px #4ade80', margin:'0 auto 20px', animation:'pulse 1.5s ease-in-out infinite' }}/>
+                <h2 style={{ fontWeight:800, fontSize:'1.2rem', marginBottom:8 }}>You're in! ✅</h2>
+                <p style={{ color:'var(--text-muted)', fontSize:'0.86rem', marginBottom:20 }}>Waiting for the teacher to start the quiz…</p>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
+                    {pts.map(p=><span key={p.username} style={{ padding:'5px 12px', borderRadius:100, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', fontSize:'0.8rem' }}>🎓 {p.username}</span>)}
+                </div>
+            </div>
+        </div>
+    );
+
+    if (status === 'active' || status === 'reveal') return (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, padding:'24px 20px' }}>
+            <div style={{ width:'100%', maxWidth:600 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
+                    <span style={{ fontSize:'0.78rem', color:'var(--text-muted)', fontWeight:600 }}>Question {(q?.index||0)+1} of {q?.total||'?'}</span>
+                    <span style={{ fontSize:'0.78rem', color:'#818cf8', fontWeight:700 }}>Score: {pts.find(p=>p.user_id===state?.user_id)?.score||0}</span>
+                </div>
+                <div className="glass" style={{ padding:'28px', borderRadius:18, marginBottom:14 }}>
+                    <p style={{ fontWeight:700, fontSize:'1.05rem', lineHeight:1.6, marginBottom:20 }}>{q?.question}</p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {(q?.options||[]).map((opt,i) => {
+                            const letter = opt[0];
+                            const isMine = answer === letter;
+                            const isCorr = status==='reveal' && letter===q.answer;
+                            const isWrong= status==='reveal' && isMine && !isCorr;
+                            let bg='rgba(255,255,255,0.04)', border='var(--border)', color='var(--text-primary)';
+                            if (isCorr) { bg='rgba(74,222,128,0.12)'; border='#4ade80'; color='#4ade80'; }
+                            else if (isWrong) { bg='rgba(239,68,68,0.1)'; border='#ef4444'; color='#f87171'; }
+                            else if (isMine && status==='active') { bg='rgba(99,102,241,0.12)'; border='#818cf8'; }
+                            const locked = lockSec > 0 && !isMine;
+                            return (
+                                <button key={i} onClick={()=>status==='active'&&submitAnswer(letter)} disabled={status==='reveal'||lockSec>0&&!isMine} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderRadius:12, background:bg, border:`1px solid ${border}`, color, cursor:status==='reveal'?'default':'pointer', fontFamily:'inherit', fontSize:'0.9rem', textAlign:'left', opacity:locked?0.5:1, transition:'all 0.2s' }}>
+                                    <span style={{ width:28,height:28,borderRadius:8,background:'rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:'0.78rem',flexShrink:0 }}>{letter}</span>
+                                    <span style={{ flex:1 }}>{opt.slice(3)}</span>
+                                    {isCorr && <CheckCircle size={16} color="#4ade80"/>}
+                                    {isWrong && <XCircle size={16} color="#f87171"/>}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {lockSec > 0 && <p style={{ marginTop:12, textAlign:'center', color:'#f87171', fontWeight:700, fontSize:'0.86rem' }}>⏳ Wait {lockSec}s before retrying…</p>}
+                    {status==='reveal' && q?.explanation && <div style={{ marginTop:14, padding:'12px 16px', borderRadius:10, background:'rgba(99,102,241,0.07)', border:'1px solid rgba(99,102,241,0.2)', fontSize:'0.84rem', color:'var(--text-secondary)', lineHeight:1.65 }}>💡 {q.explanation}</div>}
+                    {status==='reveal' && <p style={{ marginTop:10, textAlign:'center', color:'var(--text-muted)', fontSize:'0.82rem' }}>Waiting for teacher to advance…</p>}
+                </div>
+            </div>
+        </div>
+    );
+
+    if (status === 'finished') return (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, padding:32 }}>
+            <div className="glass" style={{ maxWidth:440, width:'100%', padding:'40px 32px', borderRadius:20, textAlign:'center' }}>
+                <p style={{ fontSize:'3rem', marginBottom:12 }}>🏆</p>
+                <h2 style={{ fontWeight:800, fontSize:'1.4rem', marginBottom:8 }}>Game Over!</h2>
+                <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:20, textAlign:'left' }}>
+                    {pts.map((p,i)=>(
+                        <div key={p.username} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:10, background:i===0?'rgba(251,191,36,0.08)':'rgba(255,255,255,0.03)', border:`1px solid ${i===0?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.05)'}` }}>
+                            <span style={{ width:22, textAlign:'center', fontWeight:800, fontSize:'0.8rem', color:['#fbbf24','#94a3b8','#b45309'][i]||'var(--text-muted)' }}>{i+1}</span>
+                            <span style={{ flex:1, fontWeight:600, fontSize:'0.88rem' }}>{p.username}</span>
+                            <span style={{ fontWeight:800, color:'#818cf8' }}>{p.score} pts</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+
+    return null;
+};
+
 // ─── Main QuizView ─────────────────────────────────────────────────────────────
 const QuizView = ({ user }) => {
     const [tab,      setTab]      = useState('quiz');
@@ -673,6 +831,7 @@ const QuizView = ({ user }) => {
                         { id:'quiz',  label:'🧪 Quiz' },
                         { id:'flash', label:'🃏 Flashcards' },
                         ...(!isGuest ? [{ id:'saved', label:'📂 Saved' }] : []),
+                        ...(!isGuest ? [{ id:'live',  label:'🎮 Join Live Quiz' }] : []),
                     ].map(t => (
                         <button key={t.id} onClick={() => setTab(t.id)} style={{ padding:'8px 20px', borderRadius:9, border:'none', background:tab===t.id?'var(--bg-card-hover)':'transparent', color:tab===t.id?'var(--text-primary)':'var(--text-muted)', fontWeight:tab===t.id?700:400, fontSize:'0.86rem', cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s' }}>
                             {t.label}
@@ -698,6 +857,7 @@ const QuizView = ({ user }) => {
                                     <SavedTab onLoadQuiz={handleLoadQuiz} onLoadFlashcard={handleLoadFlashcard} showToast={showToast}/>
                                 </div>
                             )}
+                            {tab==='live'  && <JoinLiveTab/>}
                         </>
                     )
                 }

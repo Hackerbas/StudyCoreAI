@@ -9,7 +9,7 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         fetch('/api/check_auth')
             .then(res => { if (res.ok) return res.json(); throw new Error('Not authenticated'); })
-            .then(data => { if (data.authenticated) setUser({ username: data.username, role: data.role, grade_level: data.grade_level }); })
+            .then(data => { if (data.authenticated) setUser({ username: data.username, role: data.role, grade_level: data.grade_level, teaching_grades: data.teaching_grades || [] }); })
             .catch(() => setUser(null))
             .finally(() => setLoading(false));
     }, []);
@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
     const login = async (username, password) => {
         const res  = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) });
         const data = await res.json();
-        if (res.ok) { setUser({ username: data.username, role: data.role, grade_level: data.grade_level }); return { success: true }; }
+        if (res.ok) { setUser({ username: data.username, role: data.role, grade_level: data.grade_level, teaching_grades: data.teaching_grades || [] }); return { success: true }; }
         return { success: false, error: data.error };
     };
 
@@ -28,8 +28,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: data.error };
     };
 
-    const register = async (username, password, role, gradeLevel, dob, teacherPassword) => {
-        const res  = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password, role, grade_level: gradeLevel, dob, teacher_password: teacherPassword }) });
+    const register = async (username, password, role, gradeLevel, dob, teacherPassword, teachingGrades) => {
+        const res  = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password, role, grade_level: gradeLevel, dob, teacher_password: teacherPassword, teaching_grades: teachingGrades || [] }) });
         const data = await res.json();
         return res.ok ? { success: true } : { success: false, error: data.error };
     };

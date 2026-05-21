@@ -15,15 +15,33 @@ const Register = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [teachingGrades, setTeachingGrades] = useState([]);
     const { register } = useAuth();
     const navigate = useNavigate();
 
     const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+    const toggleGrade = (val) => {
+        setTeachingGrades(prev =>
+            prev.includes(val) ? prev.filter(g => g !== val) : [...prev, val]
+        );
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(''); setLoading(true);
-        const result = await register(form.username, form.password, form.role, form.role === 'Student' ? form.grade_level : null, form.dob || null, form.role === 'Teacher' ? form.teacher_password : null);
+        if (form.role === 'Teacher' && teachingGrades.length === 0) {
+            setError('Please select at least one grade you teach.');
+            setLoading(false);
+            return;
+        }
+        const result = await register(
+            form.username, form.password, form.role,
+            form.role === 'Student' ? form.grade_level : null,
+            form.dob || null,
+            form.role === 'Teacher' ? form.teacher_password : null,
+            form.role === 'Teacher' ? teachingGrades : []
+        );
         if (result.success) { setSuccess(true); setTimeout(() => navigate('/login'), 1500); }
         else { setError(result.error || 'Registration failed'); setLoading(false); }
     };
@@ -31,7 +49,7 @@ const Register = () => {
     return (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative' }}>
             <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse 80% 60% at 50% 20%, rgba(99,102,241,0.12) 0%, transparent 70%)', pointerEvents: 'none' }}/>
-            <div className="glass animate-fade-up" style={{ width: '100%', maxWidth: 460, padding: '40px 36px', position: 'relative', zIndex: 1 }}>
+            <div className="glass animate-fade-up" style={{ width: '100%', maxWidth: 480, padding: '40px 36px', position: 'relative', zIndex: 1 }}>
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
                     <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 0 28px rgba(99,102,241,0.4)' }}>
                         <BookOpen size={24} color="white"/>
@@ -72,7 +90,7 @@ const Register = () => {
                         <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>I am a…</label>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                             {['Student', 'Teacher'].map(role => (
-                                <button key={role} type="button" onClick={() => set('role', role)} style={{
+                                <button key={role} type="button" onClick={() => { set('role', role); setTeachingGrades([]); }} style={{
                                     padding: '12px', borderRadius: 10, fontFamily: 'inherit', fontWeight: 600, fontSize: '0.9rem',
                                     border: `1px solid ${form.role === role ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
                                     background: form.role === role ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
@@ -85,6 +103,7 @@ const Register = () => {
                         </div>
                     </div>
 
+                    {/* Student fields */}
                     {form.role === 'Student' && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                             <div>
@@ -99,11 +118,54 @@ const Register = () => {
                             </div>
                         </div>
                     )}
-                    
+
+                    {/* Teacher fields */}
                     {form.role === 'Teacher' && (
-                        <div>
-                            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Teacher Access Code</label>
-                            <input className="input-field" type="password" value={form.teacher_password} onChange={e=>set('teacher_password',e.target.value)} placeholder="Required for Teacher accounts" required style={{ padding: '12px 16px' }}/>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            {/* Grades you teach */}
+                            <div>
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    Grades You Teach <span style={{ color: '#f87171' }}>*</span>
+                                </label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {GRADE_OPTIONS.map(g => {
+                                        const selected = teachingGrades.includes(g.value);
+                                        return (
+                                            <button
+                                                key={g.value}
+                                                type="button"
+                                                onClick={() => toggleGrade(g.value)}
+                                                style={{
+                                                    padding: '7px 14px', borderRadius: 100, fontSize: '0.82rem', fontWeight: 600,
+                                                    fontFamily: 'inherit', cursor: 'pointer', transition: 'all 0.18s',
+                                                    border: `1px solid ${selected ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                                                    background: selected ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.03)',
+                                                    color: selected ? '#a5b4fc' : 'var(--text-secondary)',
+                                                    boxShadow: selected ? '0 0 0 1px rgba(99,102,241,0.25)' : 'none',
+                                                }}
+                                            >
+                                                {selected ? '✓ ' : ''}{g.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {teachingGrades.length === 0 && (
+                                    <p style={{ fontSize: '0.74rem', color: 'rgba(248,113,113,0.7)', marginTop: 6 }}>
+                                        Select at least one grade
+                                    </p>
+                                )}
+                                {teachingGrades.length > 0 && (
+                                    <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                                        You'll see stats for students in these grades.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Access code */}
+                            <div>
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Teacher Access Code</label>
+                                <input className="input-field" type="password" value={form.teacher_password} onChange={e=>set('teacher_password',e.target.value)} placeholder="Required for Teacher accounts" required style={{ padding: '12px 16px' }}/>
+                            </div>
                         </div>
                     )}
 
