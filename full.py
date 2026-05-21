@@ -287,14 +287,23 @@ def add_security_headers(response):
 
 
 # Initialize Supabase
+# Use service role key for server-side ops (bypasses RLS — safe since this is backend only).
+# If not set, falls back to anon key but prints a warning.
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")  # preferred
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")                  # fallback (anon)
 
+_sb_key = SUPABASE_SERVICE_KEY or SUPABASE_KEY
 supabase: Client = None
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+if SUPABASE_URL and _sb_key:
+    supabase = create_client(SUPABASE_URL, _sb_key)
+    if SUPABASE_SERVICE_KEY:
+        print("[OK] Supabase initialized with service role key (RLS bypassed server-side).")
+    else:
+        print("[WARN] Supabase using anon key — add SUPABASE_SERVICE_KEY env var for full security.")
 else:
     print("Warning: SUPABASE_URL or SUPABASE_KEY is missing. Supabase will not work.")
+
 
 # --- Groq API Key Rotation ---
 
