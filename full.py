@@ -253,9 +253,34 @@ def set_cache(key, data, ex=3600):
     except: pass
 
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='/')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_local_app')
+
+_secret = os.environ.get('FLASK_SECRET_KEY', '')
+if not _secret:
+    import secrets
+    _secret = secrets.token_hex(32)
+    print('[WARN] FLASK_SECRET_KEY not set — using a random key (sessions reset on restart). Set it in env vars!')
+app.secret_key = _secret
+
+# Harden session cookies
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',
+)
 
 ALLOWED_EXTENSIONS = {'pdf'}
+
+@app.after_request
+def add_security_headers(response):
+    """Attach security headers to every response."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
+    # Only add HSTS on HTTPS (Vercel handles this, but belt-and-suspenders)
+    if request.is_secure:
+        response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains'
+    return response
 
 # Global handler — catches GroqThrottleError from any endpoint
 # (defined after the class is declared below, registered via decorator then)
@@ -400,17 +425,28 @@ def require_admin(f):
 
 @app.route('/api/register', methods=['POST'])
 def register():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    role = data.get('role', 'Student') # Default to Student
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password', '')
+    role = data.get('role', 'Student')
     grade_level = data.get('grade_level')
     dob = data.get('dob')
     teacher_password = data.get('teacher_password')
-    teaching_grades = data.get('teaching_grades', [])  # list of ints for teachers
+    teaching_grades = data.get('teaching_grades', [])
 
+    # Hard-block self-registration as Admin — only admins can create admins
+    if role == 'Admin':
+        return jsonify({'error': 'Admin accounts cannot be self-registered.'}), 403
+
+    # Input length guards
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
+    if len(username) > 40:
+        return jsonify({'error': 'Username too long (max 40 chars).'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters.'}), 400
+    if len(password) > 128:
+        return jsonify({'error': 'Password too long.'}), 400
 
     if role == 'Teacher' and teacher_password != 'u5a0qMj9xLPYwWJbG91G':
         return jsonify({'error': 'Invalid Teacher Access Code'}), 403
@@ -420,7 +456,7 @@ def register():
 
     if role == 'Student' and not grade_level:
          return jsonify({'error': 'Grade level required for students'}), 400
-         
+
     if role == 'Student' and int(grade_level) < 8:
         return jsonify({'error': 'StudyCore is for Grade 8 and above.'}), 400
 
@@ -431,7 +467,8 @@ def register():
         return jsonify({'error': 'Username violates community guidelines.'}), 400
 
     hashed_password = generate_password_hash(password)
-    
+
+
     try:
         if not supabase: raise Exception("Supabase client not initialized")
         existing = supabase.table('users').select('*').eq('username', username).execute()
